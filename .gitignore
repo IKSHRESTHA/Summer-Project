@@ -1,0 +1,29 @@
+# Data — requires HMD registration; see data/README.md
+data/bltper_1x1.txt
+
+# Virtual environment
+leecarter/
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Scratch / build scripts
+try.py
+patch_notebook.py
+build_final_notebook.py
+lee_carter_mortality_forecasting.ipynb
