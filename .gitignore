@@ -22,8 +22,4 @@ build/
 .DS_Store
 Thumbs.db
 
-# Scratch / build scripts
-try.py
-patch_notebook.py
-build_final_notebook.py
-lee_carter_mortality_forecasting.ipynb
+
