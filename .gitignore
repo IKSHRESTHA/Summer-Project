@@ -1,5 +1,6 @@
 # Data — requires HMD registration; see data/README.md
 #data/bltper_1x1.txt
+data/*.parquet
 
 # Virtual environment
 leecarter/

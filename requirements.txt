@@ -4,4 +4,5 @@ matplotlib>=3.10.0
 scipy>=1.17.0
 statsmodels>=0.14.0
 pmdarima>=2.0.0
+pyarrow>=14.0.0
 jupyter>=1.0.0
