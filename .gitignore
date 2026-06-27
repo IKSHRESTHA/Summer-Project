@@ -1,26 +1,64 @@
-# Data — requires HMD registration; see data/README.md
-#data/bltper_1x1.txt
+# ── Data (requires HMD registration) ─────────────────────────────────────────
 data/*.parquet
+data/*.txt
+data/*.csv
 
-# Virtual environment
+# ── LSTM pipeline outputs (all generated artifacts) ──────────────────────────
+LSTM/outputs/
+
+# ── ML model weights & checkpoints ───────────────────────────────────────────
+*.pt
+*.pth
+*.pkl
+*.h5
+*.hdf5
+*.ckpt
+*.safetensors
+*.bin
+*.onnx
+
+# ── Experiment tracking & hyperparameter tuning ───────────────────────────────
+wandb/
+mlruns/
+lightning_logs/
+runs/
+*.tfevents.*
+*.db
+*.sqlite
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+results/
+
+# ── AI assistant context files ────────────────────────────────────────────────
+CLAUDE.md
+CLAUDE.local.md
+**/CLAUDE.md
+**/CLAUDE.local.md
+.claude/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
 leecarter/
 venv/
 .venv/
 env/
 
-# Jupyter
+# ── Jupyter ───────────────────────────────────────────────────────────────────
 .ipynb_checkpoints/
 **/.ipynb_checkpoints/
 
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *.egg-info/
 dist/
 build/
 
-# OS
+# ── Generated reports / exports ───────────────────────────────────────────────
+*.pdf
+
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
-
-

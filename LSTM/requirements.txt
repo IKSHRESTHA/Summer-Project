@@ -1,0 +1,24 @@
+# ── LSTM mortality pipeline dependencies ──────────────────────────────────────
+# Subset of the full project requirements.txt for the LSTM/ directory only.
+# Install with: pip install -r LSTM/requirements.txt
+
+# ── Core scientific stack ──────────────────────────────────────────────────────
+numpy==2.4.6
+pandas==3.0.3
+scipy==1.17.1
+
+# ── Data I/O ──────────────────────────────────────────────────────────────────
+pyarrow==24.0.0
+
+# ── Visualisation ─────────────────────────────────────────────────────────────
+matplotlib==3.10.9
+seaborn==0.13.2
+
+# ── Time-series baseline (Lee-Carter ARIMA) ───────────────────────────────────
+statsmodels==0.14.6
+
+# ── Deep learning ─────────────────────────────────────────────────────────────
+torch==2.12.1+cpu
+
+# ── Hyperparameter optimisation ───────────────────────────────────────────────
+optuna==4.9.0
