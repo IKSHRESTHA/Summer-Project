@@ -2,266 +2,483 @@
 title: "Deep Learning for Mortality Forecasting: A Comparative Study of LSTM Variants"
 author: "Mortality Forecasting Project"
 date: "2026-06-27"
+lang: en-GB
+
+abstract: |
+  This study benchmarks five Long Short-Term Memory (LSTM) neural network architectures --- Vanilla
+  LSTM, Stacked LSTM, Bidirectional LSTM (BiLSTM), CNN-LSTM, and Attention LSTM --- against the
+  classical Lee-Carter model for age-specific mortality forecasting. Using Australian male mortality
+  data from the Human Mortality Database (ages 0--99, 1950--2019), models are trained on 1950--2004,
+  validated on 2005--2009, and evaluated on a held-out test set of 2010--2019. Direct LSTM models,
+  which receive the full 100-dimensional age-mortality surface as input, are assessed alongside
+  kt-LSTM variants that apply LSTM architectures exclusively to the scalar Lee-Carter period effect
+  $\kappa_t$. Results consistently favour the classical model: the rolling one-step Lee-Carter
+  achieves the lowest test-set error (RMSE = 0.164, MAE = 0.126, life-expectancy MAE = 0.35 years),
+  while the best-performing direct LSTM (Stacked LSTM) records RMSE = 0.258 and life-expectancy MAE
+  = 1.65 years. The best kt-LSTM variant (Kt-BiLSTM rolling) achieves RMSE = 0.253 and
+  life-expectancy MAE = 1.56 years. Diebold-Mariano tests confirm that all LSTM models are
+  significantly less accurate than the one-step Lee-Carter benchmark ($p < 0.001$). These findings
+  suggest that, in data-constrained settings characterised by a strong linear mortality trend and
+  only 55 training years, the parsimony of Lee-Carter confers a material forecasting advantage over
+  flexible deep learning architectures.
+
+bibliography: references.bib
+
+crossref:
+  fig-title: "Figure"
+  tbl-title: "Table"
+  fig-prefix: "Figure"
+  tbl-prefix: "Table"
+
+execute:
+  echo: false
+  freeze: true
+
 format:
-  pdf:
+  typst:
     toc: true
+    toc-depth: 3
     number-sections: true
-    fig-pos: "H"
-    geometry: margin=2.5cm
+    fig-align: center
+    cap-location: bottom
+    papersize: a4
+    margin:
+      top: 2.5cm
+      bottom: 2.5cm
+      left: 2.5cm
+      right: 2.5cm
     fontsize: 11pt
+    linestretch: 1.15
+    mainfont: "New Computer Modern"
+
   html:
     toc: true
+    toc-depth: 3
     toc-float: true
+    number-sections: true
     embed-resources: true
     theme: cosmo
-bibliography: references.bib
----
-
-```{python}
-#| echo: false
-#| warning: false
-import os, sys
-sys.path.insert(0, ".")
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from IPython.display import Image
-
-FIG = "outputs/figures"
-RES = "outputs/results"
-```
-
-# Abstract
-
-We evaluate five Long Short-Term Memory (LSTM) neural network architectures — Vanilla LSTM, Stacked LSTM, Bidirectional LSTM, CNN-LSTM, and Attention LSTM — for the task of age-specific mortality rate forecasting using Human Mortality Database (HMD) data. The Lee-Carter (1992) model serves as the classical benchmark. Models are assessed on mean absolute error (MAE) and root mean squared error (RMSE) of log central death rates, as well as error in period life expectancy at birth ($e_0$) over a 10-year held-out test period (2010–2019). Results demonstrate that attention-augmented LSTM variants consistently outperform the Lee-Carter baseline on life expectancy prediction, while the classical model remains competitive on raw rate forecasting in low-volatility countries.
-
+    smooth-scroll: true
+    cap-location: bottom
 ---
 
 # Introduction
 
-Accurate mortality forecasting is essential for pension fund solvency, insurance pricing, social security planning, and public health resource allocation. The Lee-Carter (LC) model [@lee1992modeling] has been the gold standard since 1992, decomposing log mortality rates into an age effect ($\alpha_x$), an age-specific response ($\beta_x$), and a time-varying index ($\kappa_t$):
+The question of how long people will live carries consequences that extend far beyond the domain of academic demography. Pension funds, life insurers, social security administrators, and government treasuries all make multi-decade financial commitments whose solvency depends critically on the accuracy of mortality forecasts. An underestimate of life expectancy by even a single year can translate into billions of dollars of unfunded liability for a national pension scheme; an overestimate distorts insurance pricing and misallocates public health resources. As populations across the developed world continue to age at historically unprecedented rates, the demand for mortality forecasting methods that are both accurate and robust has never been more acute.
 
-$$
-\ln m(x,t) = \alpha_x + \beta_x \kappa_t + \varepsilon_{x,t}
-$$
+The dominant framework for age-specific mortality forecasting over the past three decades remains the model introduced by @lee1992modeling. The Lee-Carter model decomposes the log central death rate $\ln m(x, t)$ according to the bilinear structure
 
-The $\kappa_t$ index is then extrapolated using a random walk with drift (ARIMA(0,1,0)), providing probabilistic forecasts through simulation. Despite its parsimony, LC suffers from several limitations: it assumes a constant age–period interaction structure ($\beta_x$ fixed over time), cannot capture abrupt structural breaks, and relies on a purely linear time trend for $\kappa_t$.
+$$\ln m(x, t) = \alpha_x + \beta_x \kappa_t + \varepsilon_{x,t},$$
 
-Deep learning, and LSTM networks in particular, offer a flexible alternative. LSTMs can model long-range temporal dependencies, non-linear relationships, and multi-variate patterns simultaneously — all without imposing the parametric structure of LC. Recent work by @richman2019neural, @perla2021time, and @nigri2021deep has demonstrated competitive or superior performance of neural approaches on HMD data.
+where $\alpha_x$ captures the average age profile of mortality, $\kappa_t$ is a latent period index governing the overall level of mortality through time, $\beta_x$ quantifies the sensitivity of each age group to changes in $\kappa_t$, and $\varepsilon_{x,t}$ is a zero-mean error term. Mortality projections are then obtained by extrapolating $\kappa_t$ as a random walk with drift. The Lee-Carter model's enduring appeal stems from its parsimony and interpretability: it reduces a high-dimensional mortality surface to a single stochastic index, and the biological meaning of its components is transparent to practitioners in insurance and public policy alike.
 
-This study contributes a systematic comparison of five LSTM architectures, all trained on the same 10-country HMD dataset, with a consistent protocol (identical train/val/test splits, Adam optimiser, early stopping) and evaluation against the same LC baseline.
+Nevertheless, the Lee-Carter framework rests on assumptions that have attracted sustained critical attention. Most importantly, the age-sensitivity loadings $\beta_x$ are assumed to be constant over the entire estimation horizon, so that all age groups respond proportionally to the same period shock. Empirical evidence from multiple national datasets suggests that the relative pace of improvement has shifted considerably across age groups over recent decades, violating this fixed-interaction assumption. Furthermore, the model imposes a linear drift on $\kappa_t$, rendering it poorly equipped to capture structural breaks or accelerations in mortality improvement --- such as those associated with the cardiovascular revolution of the 1970s and 1980s --- without ad hoc intervention. These limitations have motivated a substantial literature exploring generalisations of the Lee-Carter framework, including the age-period-cohort extensions of @renshaw2006cohort and the multi-population models of @lilee2005coherent.
+
+A parallel strand of research has drawn on developments in deep learning to ask whether neural networks can address the shortcomings of classical actuarial models. Long Short-Term Memory (LSTM) networks, introduced by @hochreiter1997long, are a class of recurrent neural network architectures specifically designed to capture long-range temporal dependencies through gated memory cells that regulate the flow of information across time steps. Unlike autoregressive statistical models, LSTMs impose no parametric assumptions on the temporal dynamics of the series being modelled, can learn non-linear relationships between predictors and outcomes, and can in principle process the full multivariate mortality surface jointly, exploiting correlations across age groups that univariate methods discard.
+
+Several recent contributions have assessed the applicability of these architectures to mortality data. @richman2021neural provided an influential early demonstration, replacing the random walk extrapolation of $\kappa_t$ in the Lee-Carter model with an LSTM, yielding what the present paper refers to as the kt-LSTM approach. Their results on multi-country Human Mortality Database (HMD) data indicated that recurrent networks could improve out-of-sample accuracy relative to the classical random walk specification. @perla2021time extended this line of inquiry by applying both convolutional and recurrent architectures directly to the matrix of log death rates drawn from the HMD, reporting competitive performance relative to established actuarial benchmarks across a broad cross-section of countries. @nigri2021deep proposed a hybrid strategy in which a neural network augments the Lee-Carter decomposition, learning residual structure that the bilinear model leaves unexplained. Collectively, these contributions demonstrate that deep learning methods can achieve competitive or improved accuracy relative to classical benchmarks in mortality forecasting, with gains most evident when training on rich multi-country or multi-population datasets. @booth2006lee provided an important reference point for this discussion by benchmarking a range of Lee-Carter variants across ten countries, establishing empirical baselines against which subsequent methodological proposals were evaluated.
+
+A notable gap in this literature concerns the single-country, data-constrained setting. The favourable results reported for LSTMs have almost uniformly been obtained in regimes where the training corpus is large --- spanning many countries or very long historical series --- providing the network with the volume of observations necessary to estimate its substantial parameter count. It remains unclear whether these advantages persist when the practitioner is restricted to the mortality history of a single country over a span of decades, a scenario that is typical of the problems faced by national statistical agencies and pension fund actuaries in smaller economies. In such settings, the statistical efficiency of parsimonious classical models may reassert itself.
+
+This paper addresses that gap directly. It presents a systematic empirical comparison of five LSTM architectures --- Vanilla LSTM, Stacked LSTM, Bidirectional LSTM (BiLSTM), CNN-LSTM, and Attention LSTM --- alongside the kt-LSTM approach of @richman2021neural, evaluated against a Lee-Carter baseline. All models are estimated and assessed on Australian male mortality data obtained from the Human Mortality Database, spanning the period 1950 to 2019. Australia was selected because it is a canonical developed-country case with a long, high-quality mortality record in the HMD, exhibits a strong and near-monotone downward trend in adult male mortality over the estimation window, and provides a single-country setting that is deliberately more constrained than the multi-country designs used in prior LSTM studies. The study does not examine female mortality or multi-country pooling; these extensions are left for future work. By holding the dataset, evaluation protocol, and error metrics constant across all methods, the study provides a controlled assessment of the conditions under which deep learning architectures add value relative to the classical benchmark.
+
+The remainder of the paper is organised as follows. Section 2 reviews the relevant literature on classical mortality forecasting and deep learning approaches. Section 3 describes the data sources, the construction of the mortality surface, and the train/validation/test splitting procedure. Section 4 presents the Lee-Carter baseline and each of the five LSTM architectures in formal detail, together with the kt-LSTM formulation and training protocol. Section 5 reports the empirical results, including out-of-sample forecast errors, life expectancy projections, residual diagnostics, Diebold-Mariano statistical tests, kt-LSTM comparisons, and cross-validation results. Section 6 discusses the findings in the context of the existing literature and examines the conditions under which classical methods retain their advantage. Section 7 concludes.
+
+---
+
+# Related Work
+
+## Classical Mortality Forecasting Models
+
+The statistical modelling of human mortality has a history stretching back to the construction of life tables in the seventeenth century, but the modern era of stochastic mortality forecasting is most commonly traced to the landmark contribution of @lee1992modeling. Applying singular value decomposition to a matrix of logged central death rates for the United States over the twentieth century, Lee and Carter showed that a single latent index $\kappa_t$, together with age-specific loading parameters $\alpha_x$ and $\beta_x$, could account for the overwhelming majority of historical variation in age-specific mortality. Projections were obtained by modelling $\kappa_t$ as a random walk with drift, a specification that was both parsimonious and well-aligned with the secular decline in mortality observed across developed nations. The Lee-Carter model rapidly became the dominant paradigm in actuarial and demographic forecasting, and it serves as the primary benchmark in the present study.
+
+Subsequent scholarship has sought to address well-documented limitations of the original framework. @renshaw2006cohort introduced a cohort dimension $\gamma_c$ to the bilinear Lee-Carter structure, acknowledging the strong empirical evidence that birth-cohort membership shapes mortality trajectories in ways that the original age-period specification cannot capture. Applied to England and Wales mortality data, their cohort-extended model produced materially different projections for certain age groups, highlighting that the omission of cohort effects can introduce systematic bias in long-horizon forecasts. However, the added flexibility of the Renshaw--Haberman model comes at the cost of estimation instability and convergence difficulties, particularly for shorter national series --- a problem directly relevant to the Australian data used here.
+
+@lilee2005coherent addressed a different limitation: the tendency of independently estimated single-population Lee-Carter models to diverge when applied simultaneously to groups of related populations. By constraining multiple populations to share a common long-run factor whilst retaining population-specific terms, they ensured that the forecasted mortality trajectories of comparable nations do not diverge implausibly over long horizons. Their coherent framework has since become standard practice in multi-country actuarial analysis, though its primary relevance is to multi-population rather than single-country settings.
+
+The empirical properties of Lee-Carter and its variants across different national contexts were systematically examined by @booth2006lee, who benchmarked the original model alongside several extensions using mortality data from ten HMD member countries. Their results confirmed that the original Lee-Carter specification is broadly competitive across a range of settings, but identified a key sensitivity to the choice of time period over which $\kappa_t$ is estimated: when the selected window spans mortality regimes with materially different rates of improvement, the extrapolated drift term may be either too optimistic or too conservative. This finding is directly pertinent to the present study, where the 1950--2004 training window for Australian males spans the post-war high-mortality era and the later phase of rapid cardiovascular improvement.
+
+## Deep Learning for Time-Series and Mortality Forecasting
+
+The theoretical foundations of the LSTM architectures examined in this paper rest on the seminal work of @hochreiter1997long. Earlier recurrent neural networks suffered from the vanishing and exploding gradient problems that prevented effective learning of long-range temporal dependencies: gradients either shrank to zero or grew unboundedly when backpropagated through many time steps. Hochreiter and Schmidhuber addressed this by introducing gated memory cells comprising an input gate, a forget gate, and an output gate, which allow the network to selectively retain or discard information across arbitrarily long sequences. This architectural innovation made it practical to train deep sequence models on real-world time series, and LSTM cells remain the basic building block of all five LSTM variants benchmarked in the present study.
+
+The Attention LSTM variant examined here draws additionally on the scaled dot-product attention mechanism formalised by @vaswani2017attention. Although the Transformer architecture introduced in that work dispenses with recurrence entirely in favour of self-attention, the attention mechanism has also been incorporated into recurrent architectures, allowing the model to assign differential weight to different time steps in the input sequence when forming its prediction. In the context of mortality forecasting, this provides the model with the capacity to emphasise historically informative years --- for instance, years surrounding major structural shifts in mortality improvement --- rather than treating all lags as equally relevant.
+
+The first systematic application of LSTM methods to mortality forecasting in the actuarial literature was undertaken by @richman2021neural, whose work is directly methodologically antecedent to the kt-LSTM approach evaluated here. Working with a large multi-country HMD corpus, Richman and Schreck replaced the Lee-Carter random walk extrapolation of $\kappa_t$ with an LSTM, demonstrating that the added flexibility of the recurrent network yielded improved out-of-sample forecast accuracy relative to the classical specification. Crucially, their gains were most pronounced when the model was trained jointly across multiple populations, exploiting cross-country commonalities in mortality dynamics. The present paper isolates the single-country case and thereby tests whether the kt-LSTM advantage survives in a data-constrained setting with no cross-population information transfer.
+
+@perla2021time extended the deep learning approach beyond the $\kappa_t$ representation by applying convolutional and LSTM architectures directly to the full two-dimensional log-rate matrix, simultaneously learning temporal dynamics and cross-age structure from a corpus of mortality surfaces drawn from more than thirty HMD countries. Their multi-country training paradigm yielded competitive performance relative to established actuarial benchmarks and demonstrated that neural networks can exploit shared mortality patterns across heterogeneous national populations. The present study uses a comparable architecture family but limits training to a single national series, making it a more direct test of whether LSTM networks can compete with Lee-Carter in the absence of the cross-country signal that supports their performance in @perla2021time.
+
+## Hybrid and Structured Approaches
+
+A distinct modelling philosophy is represented by the hybrid strategy of @nigri2021deep, who augmented the Lee-Carter decomposition with a neural network trained to learn the residual structure that the bilinear model fails to capture. Applied to Italian male mortality --- a single-country setting making it the prior work most directly comparable to the present study --- this approach yielded forecasts competitive with the standard Lee-Carter model, while offering the potential to detect non-linear age interactions that the linear $\beta_x \kappa_t$ product cannot represent. The Nigri et al. results are particularly informative for the present paper: in a single-country setting where the mortality trend is strongly linear, the hybrid model did not deliver a decisive advantage over its classical counterpart, a pattern consistent with the dominance of Lee-Carter observed in the present results.
+
+The kt-LSTM variants evaluated in this paper occupy a position between the purely classical and fully data-driven extremes. Rather than replacing the Lee-Carter framework, they retain the SVD-based decomposition and substitute only the random walk extrapolation of $\kappa_t$ with an LSTM, following the methodology of @richman2021neural. This restricted architecture preserves the interpretability of the Lee-Carter age structure whilst allowing the period index to follow a potentially non-linear trajectory. Testing these variants in a single-country context allows the present study to isolate the marginal contribution of a flexible $\kappa_t$ model from the benefits of multi-population training.
+
+## Statistical Evaluation of Forecast Accuracy
+
+The inferential framework used to assess whether observed differences in forecast accuracy between Lee-Carter and LSTM models are statistically meaningful is provided by @diebold1995comparing. The Diebold-Mariano test evaluates the null hypothesis that two competing forecast series have equal expected loss, without requiring either series to be nested within the other or imposing distributional assumptions on the forecast errors. Its applicability to non-nested, potentially non-normal time-series forecasts makes it the standard tool for pairwise comparisons of this kind in the econometric and actuarial forecasting literature. The life table calculations used to translate forecasted log death rates into life expectancy at birth throughout this study follow the sex-specific formula for $a_0$ --- the fraction of the first year of life lived by those who die in infancy --- specified by @andreev2015agefractions, whose sensitivity analysis established this as the preferred approach for constructing period life tables from HMD data.
+
+The present paper occupies a specific and underexplored position in this literature. Prior deep learning mortality studies that report favourable results for LSTM or hybrid architectures have almost invariably drawn on multi-country or multi-population training corpora [@richman2021neural; @perla2021time], or have found only marginal gains over classical alternatives in single-country settings [@nigri2021deep]. The existing evidence therefore does not clearly answer whether LSTM architectures can add value over Lee-Carter when the analyst is restricted to a single country's historical record --- the most common practical constraint facing actuaries in national pension and insurance contexts. By applying five LSTM variants and two kt-LSTM families to a single country's HMD series and subjecting all pairwise comparisons to formal Diebold-Mariano testing, the present study provides the first systematic, statistically rigorous evidence on this question for Australian male mortality.
 
 ---
 
 # Data
 
-## Human Mortality Database
+## Source and Coverage
 
-We use central death rates $m(x,t)$ from the Human Mortality Database (HMD) for 10 countries: Australia (AUS), Canada (CAN), Switzerland (CHE), Denmark (DNK), Finland (FIN), France (FRATNP), England and Wales (GBRTENW), Italy (ITA), Norway (NOR), and Sweden (SWE).
+Mortality data were obtained from the Human Mortality Database [HMD; @HMD2024, mortality.org], a curated repository of high-quality historical mortality records for countries with reliable civil registration systems. We use central death rates $m(x,t)$ for **Australian males**, spanning ages $x = 0, 1, \ldots, 99$ and calendar years $t = 1950, \ldots, 2019$, yielding a $100 \times 70$ age-by-year matrix. Central death rates are defined as the ratio of observed deaths to the central exposed-to-risk in each age-year cell.
 
-The data are stored as Age × Year matrices (parquet format) covering ages 0–99 and years 1950–2019, giving at most 70 × 100 data points per country-sex combination.
+Data are stored locally as Apache Parquet files, with each file structured as an Age $\times$ Year `pandas` DataFrame indexed by single-year age groups. The Parquet format was chosen for its efficient columnar compression and fast I/O relative to CSV, which is relevant when iterating over multiple preprocessing and training runs.
 
 ## Preprocessing
 
-All models receive log-transformed rates:
+Raw central death rates span several orders of magnitude (from roughly $10^{-4}$ at young ages to $10^{-1}$ at the oldest ages), so all models operate on the natural logarithm of the central death rate:
 
-$$
-y(x,t) = \ln m(x,t), \quad \text{clipped to } [-10,\, 0]
-$$
+$$y(x,t) = \ln m(x,t).$$
 
-Per-age standardisation (zero mean, unit variance) is applied using statistics computed on the training partition only. LSTM inputs are constructed via a sliding window of length $T = 20$ years:
+Log-rates are clipped to the interval $[-10,\ 1.5]$ to guard against numerical instability arising from near-zero rates in infant or young-adult age groups that can produce extreme negative values in sparse historical years.
 
-$$
-\mathbf{x}_t = \bigl(y(\cdot, t-T), \ldots, y(\cdot, t-1)\bigr) \in \mathbb{R}^{T \times 100}
-\quad \longrightarrow \quad \hat{y}(\cdot, t) \in \mathbb{R}^{100}
-$$
+Following log-transformation, **per-age standardisation** is applied to centre and scale each age series independently:
+
+$$z(x,t) = \frac{y(x,t) - \hat{\mu}_x}{\hat{\sigma}_x},$$
+
+where $\hat{\mu}_x$ and $\hat{\sigma}_x$ are the mean and standard deviation of $y(x,\cdot)$ computed **exclusively on the training set** (1950--2004). Applying the training-set statistics to validation and test years prevents data leakage and ensures the standardisation is strictly prospective.
+
+Sequences are constructed via a **sliding window**. For direct LSTM models, the window length is $T = 20$ years: each input sample is the $20 \times 100$ matrix of standardised log-rates for a contiguous block of 20 consecutive years, with the corresponding target being the 100-dimensional log-rate vector in the immediately following year. For the kt-LSTM variants (see @sec-kt), a shorter window of $T = 10$ years is used, reflecting the lower dimensionality of the scalar $\kappa_t$ input; each sample is a 10-element sequence of standardised $\kappa_t$ values with a single next-period $\kappa_t$ target.
 
 ## Train / Validation / Test Split
 
-All splits are time-ordered (no shuffling across years):
+Data are partitioned into three strictly non-overlapping, time-ordered segments:
 
-| Partition | Years | Purpose |
-|-----------|-------|---------|
-| Train | 1950–2004 | Model fitting |
-| Validation | 2005–2009 | Early stopping, LR scheduling |
-| Test | 2010–2019 | Final evaluation |
+| Split      | Years      | Duration | Role                                  |
+|:-----------|:-----------|:---------|:--------------------------------------|
+| Training   | 1950--2004 | 55 years | Parameter estimation                  |
+| Validation | 2005--2009 | 5 years  | Hyperparameter tuning, early stopping |
+| Test       | 2010--2019 | 10 years | Final held-out evaluation             |
+
+: Data partition summary. {#tbl-split}
+
+No shuffling of observations is performed across year boundaries. This strict temporal ordering is essential for mortality forecasting, where any form of future information leakage would produce optimistically biased error estimates. The 10-year test horizon (2010--2019) is standard in the actuarial and demographic literature and is long enough to assess the models' ability to extrapolate meaningful medium-term trends.
 
 ---
 
 # Methods
 
-## Lee-Carter Baseline
+## Lee-Carter Baseline {#sec-lc}
 
-We fit the standard Lee-Carter model via singular value decomposition (SVD) on the training log-mortality matrix, applying the normalisation constraints $\sum_x \beta_x = 1$ and $\sum_t \kappa_t = 0$. The time index is forecast with ARIMA(0,1,0) + drift (statsmodels). We use the Andreev-Kingkade (2015) sex-specific formula for the age-0 fraction of the last age interval when computing life expectancy.
+The Lee-Carter model [@lee1992modeling] decomposes the log central death rate matrix as:
 
-## LSTM Architectures
+$$\ln m(x,t) = \alpha_x + \beta_x \kappa_t + \varepsilon_{x,t},$$
 
-### Vanilla LSTM
+where $\alpha_x$ captures the age-specific mean log-mortality, $\beta_x$ describes the age-sensitivity to the latent mortality index, and $\kappa_t$ is a scalar time trend. Parameters are estimated via **singular value decomposition (SVD)** of the centred log-rate matrix $Z = \log M - \hat{\alpha}_x \mathbf{1}^\top$, where $\hat{\alpha}_x$ is the time-average log-rate at each age. If $Z = U S V^\top$, then $\hat{\beta}_x = U_{:,1}$ (first left singular vector) and $\hat{\kappa}_t = S_1 V_{1,:}$ (first singular value times first right singular vector), so that $\hat{\beta}_x \hat{\kappa}_t^\top$ is the rank-one approximation to $Z$.
 
-A single-layer LSTM with hidden size 128, followed by dropout ($p = 0.2$) and a linear projection head:
+Two identification constraints are imposed: $\sum_x \beta_x = 1$ and $\sum_t \kappa_t = 0$. Because the sign of the first singular vector is arbitrary, the sign of $\sum_x \beta_x$ is checked **before** normalising: if the raw sum is negative, both $\beta_x$ and $\kappa_t$ are negated. After normalisation the sum is always $+1$ by construction, so the sign check must precede it.
 
-$$
-\hat{y} = W_o \cdot \text{dropout}(h_T) + b_o, \quad h_T \in \mathbb{R}^{128}
-$$
+The extracted $\kappa_t$ series is modelled as a random walk with drift --- equivalently, an **ARIMA(0,1,0) with drift** --- which is the canonical choice in the original Lee-Carter framework. Mortality forecasts are generated under two operational modes:
 
-### Stacked LSTM
+- **(a) 1-step rolling:** The Lee-Carter model is refit each year on an expanding window of all data up to year $t-1$, and a single 1-year-ahead forecast is produced. This mode mimics a real-time forecasting environment and produces the most directly comparable baseline for models evaluated on year-by-year prediction.
+- **(b) Multi-step:** The model is fit once on the full training period (1950--2004) and $\kappa_t$ is extrapolated 10 years ahead via the ARIMA drift model, producing forecasts for all 10 test years simultaneously.
 
-Three stacked LSTM layers with inter-layer dropout ($p = 0.2$). Deeper layers capture hierarchical temporal abstractions of the mortality trajectory.
+Period life tables are constructed using the **Andreev-Kingkade [-@andreev2015agefractions]** sex-specific formula for the fraction of the last year of life lived in the first age interval ($a_0$), ensuring demographic coherence in life expectancy calculations. For the open age interval (age 99+), we use $L_{99} = l_{99} / m_{99}$.
 
-### Bidirectional LSTM
+## LSTM Architectures {#sec-lstm}
 
-A single BiLSTM layer produces a $256$-dimensional concatenation of forward and backward hidden states at the last time step. This allows the model to incorporate both the trend direction (forward) and the historical shape (backward) simultaneously.
+All five direct LSTM variants share the same input shape --- $(B,\ T,\ 100)$ where $B$ is batch size, $T = 20$ is the sequence length, and 100 is the number of age groups --- and the same output shape $(B,\ 100)$. This design allows each model to learn the temporal dynamics of the complete age schedule simultaneously, exploiting cross-age correlations within each architecture's inductive bias.
 
-### CNN-LSTM
+**Vanilla LSTM.** The simplest architecture consists of a single LSTM layer [@hochreiter1997long] with 128 hidden units. Layer normalisation (LayerNorm) followed by dropout of 0.2 are applied in sequence to the LSTM output before the linear projection head maps the final hidden state $h_T \in \mathbb{R}^{128}$ to the 100-dimensional output.
 
-A two-layer 1-D convolutional network (64 channels, kernel size 5) processes the age axis at each time step, extracting cross-age structural features. Global average pooling collapses the age dimension to 64 features per year, which are then fed into a 128-unit LSTM. This architecture reflects the well-documented cross-age coherence in mortality data.
+**Stacked LSTM.** Three LSTM layers are stacked sequentially, each with 128 hidden units and connected via residual skip connections. Each block computes a LayerNorm-normalised sum of the LSTM output and a linear projection of the block's input, followed by dropout of 0.2, before passing to the next layer. The residual connections prevent gradient degradation in deeper stacks, and the hierarchical gating allows each layer to abstract progressively longer-run temporal patterns. The final hidden state of the third block feeds a linear head.
 
-### Attention LSTM
+**Bidirectional LSTM (BiLSTM).** A single BiLSTM layer runs one forward LSTM (128 units) and one backward LSTM (128 units) over the input sequence. Their hidden states at the final time step $t = T$ are concatenated to yield a 256-dimensional representation. LayerNorm is applied to this 256-dimensional vector, followed by dropout of 0.2, before a linear head maps it to the 100 output ages. The backward pass provides the network with access to later contextual information within the input window, which can be beneficial for capturing non-monotone mortality patterns within the 20-year window.
 
-A standard LSTM followed by scaled dot-product temporal attention [@vaswani2017attention] over all hidden states:
+**CNN-LSTM.** The age dimension is treated as a spatial axis and processed by two successive Conv1D layers (64 channels each, kernel size 5, ReLU activations) that extract local age-neighbourhood features before temporal modelling. A global average pool then collapses the age axis to a 64-dimensional feature vector per time step, which is fed as a sequence of length $T$ into an LSTM with 128 hidden units. This hybrid architecture exploits both the spatial smoothness of age-mortality schedules and the temporal dynamics captured by the LSTM.
 
-$$
-\mathbf{e}_t = \frac{q^\top h_t}{\sqrt{d}}, \quad
-\alpha_t = \text{softmax}(\mathbf{e}), \quad
-\mathbf{c} = \sum_t \alpha_t h_t
-$$
+**Attention LSTM.** An LSTM with 128 hidden units produces a sequence of hidden states $\{h_1, \ldots, h_T\}$. Scaled dot-product attention [@vaswani2017attention] is applied over these states using the final hidden state as a query: $q = W_q h_T \in \mathbb{R}^{128}$, attention logits $e_t = q^\top h_t / \sqrt{128}$, and attention weights $\alpha_t = \operatorname{softmax}(e_t)$. The context vector $c = \sum_{t=1}^{T} \alpha_t h_t$ is a weighted summary of all $T$ hidden states, allowing the model to dynamically focus on the most informative historical years. A linear head maps $c$ to the 100-dimensional forecast.
 
-where $q = W_q h_T$ is the query derived from the most recent hidden state. The context vector $\mathbf{c}$ replaces the raw last hidden state, allowing the model to selectively weight historically important years.
+## kt-LSTM Variants {#sec-kt}
 
-## Training Protocol
+Following the kt-LSTM approach of @richman2021neural, we additionally apply each LSTM architecture to the scalar $\kappa_t$ time series extracted from the Lee-Carter decomposition, rather than to the full age schedule directly. In this formulation, the LSTM receives **univariate** input of shape $(B,\ T,\ 1)$ --- a sequence of $T = 10$ scalar $\kappa_t$ values --- and outputs the next-period $\hat{\kappa}_{t+1}$. This dimensionality reduction from 100 to 1 is the key structural difference from the direct LSTM approach. Forecasted death rates are recovered by back-transformation:
 
-All LSTM models share the following training setup:
+$$\hat{m}(x,t) = \exp\!\bigl(\hat{\alpha}_x + \hat{\beta}_x \,\hat{\kappa}_t\bigr).$$
 
-| Setting | Value |
-|---------|-------|
-| Optimiser | Adam |
-| Initial learning rate | $10^{-3}$ |
-| LR scheduler | ReduceLROnPlateau (factor=0.5, patience=5) |
-| Loss | MSE on standardised log($m_x$) |
-| Gradient clipping | max norm = 1.0 |
-| Early stopping patience | 10 epochs |
-| Max epochs | 100 |
-| Batch size | 32 |
-| Random seed | 42 |
+This yields five kt-LSTM variants (Kt-Vanilla, Kt-Stacked, Kt-BiLSTM, Kt-CNN-LSTM, Kt-Attention), each adapted for 1-dimensional scalar input. These variants are compared against both LC (rolling) and LC (multi-step) baselines to isolate the contribution of the LSTM temporal model from the contribution of the Lee-Carter structural decomposition.
 
-## Evaluation Metrics
+## Training Protocol {#sec-training}
 
-- **MAE** and **RMSE** on log($m_x$) over all 100 ages and 10 test years.
-- **$e_0$ MAE**: mean absolute error of period life expectancy at birth, computed via a period life table with the Chiang (1984) formula and the open-interval constant-force assumption: $L_{99} = l_{99}/m_{99}$.
+All LSTM models are trained under a common protocol summarised in @tbl-training:
+
+| Hyperparameter          | Value                                           |
+|:------------------------|:------------------------------------------------|
+| Optimiser               | AdamW (weight decay $1 \times 10^{-4}$)         |
+| Initial learning rate   | $1 \times 10^{-3}$                              |
+| LR scheduler            | ReduceLROnPlateau (factor = 0.5, patience = 10) |
+| Loss function           | MSE on standardised log-rates                   |
+| Gradient clipping       | Max norm = 1.0                                  |
+| Early stopping patience | 15 epochs (monitor: validation loss)            |
+| Maximum epochs          | 100                                             |
+| Batch size              | 32                                              |
+| Random seed             | 42                                              |
+
+: LSTM training hyperparameters, common to all architectures. {#tbl-training}
+
+The learning rate scheduler halves the learning rate whenever validation loss fails to improve for ten consecutive epochs, preventing oscillation near convergence. Gradient clipping at a maximum $\ell_2$ norm of 1.0 mitigates exploding gradients, which are a known pathology in deep recurrent networks trained on long sequences. All stochastic operations (weight initialisation, dropout masks, data sampling) are seeded at 42 for reproducibility.
+
+## Evaluation Metrics {#sec-metrics}
+
+Model performance is assessed across all 100 single-year age groups and all 10 test years (2010--2019) using the following metrics:
+
+- **RMSE** and **MAE** on $\ln m(x,t)$: standard point-forecast accuracy measures on the log-rate scale, which down-weights large absolute errors at high-mortality ages.
+- **ME (Mean Error / Bias):** $\frac{1}{100 \cdot 10}\sum_{x,t}[\hat{y}(x,t) - y(x,t)]$, measuring systematic over- or under-estimation.
+- **MAPE (%):** mean absolute percentage error computed on the central death rate scale (after exponentiating log-rate forecasts back to $m(x,t)$), providing a scale-free summary of relative accuracy across the age schedule.
+- **$e_0$ MAE (years):** Mean absolute error of the period life expectancy at birth, computed from a period life table applied to the forecasted central death rates. This metric directly quantifies actuarial and policy relevance.
+- **Diebold-Mariano (DM) test** [@diebold1995comparing]: a formal test of equal predictive accuracy between each LSTM model and the LC (1-step rolling) baseline, using **squared error loss**. Loss differentials $d_t = e_{1,t}^2 - e_{2,t}^2$ are computed at each test year $t$, where $e_{1,t}$ is the LSTM mean squared error across all 100 ages and $e_{2,t}$ is the Lee-Carter 1-step mean squared error. The null hypothesis of equal predictive accuracy is evaluated via a one-sample $t$-test on $\{d_t\}_{t=1}^{10}$, yielding statistic $DM = \bar{d} / \operatorname{SE}(\bar{d})$. A **negative** DM statistic indicates that the LSTM has *larger* squared errors than Lee-Carter --- i.e., Lee-Carter is the more accurate model. Given the short test horizon of $T = 10$ years, results should be interpreted as indicative rather than definitive; the large magnitudes of the observed statistics suggest the qualitative direction of the findings is robust.
+- **5-fold time-series cross-validation** on the combined training and validation period (1950--2009): folds respect temporal order (no shuffling), with five expanding training windows of 30, 35, 40, 45, and 50 years. Because Lee-Carter has no tunable hyperparameters, cross-validation is applied only to the LSTM models, where it assesses the stability of their performance rankings across different historical sub-periods.
 
 ---
 
 # Results
 
-```{python}
-#| echo: false
-#| label: tbl-results
-#| tbl-cap: "Test-set performance metrics. MAE and RMSE are on log(mx); e0 MAE/RMSE are in years."
-try:
-    df = pd.read_csv(os.path.join(RES, "AUS_male_metrics.csv"), index_col=0)
-    display(df.round(4).style.highlight_min(axis=0, color="#d4efdf")
-              .format("{:.4f}").set_caption("Australia (Male) — Test Metrics"))
-except FileNotFoundError:
-    print("Run `python run_all.py --country AUS --sex male` to generate results.")
-```
+Across all evaluation criteria, the Lee-Carter model with one-step rolling re-estimation is the dominant forecaster: it achieves RMSE = 0.164 and life-expectancy MAE = 0.349 years on the 2010--2019 Australian male test set, outperforming every LSTM variant by margins that are both practically large and statistically unambiguous ($p < 0.001$ on all Diebold-Mariano tests). Among direct LSTM architectures, the Stacked LSTM is the strongest performer (RMSE = 0.258, $e_0$ MAE = 1.646 years), yet it still exceeds the rolling Lee-Carter benchmark RMSE by 57% and records a life-expectancy MAE nearly five times that of the rolling Lee-Carter. The kt-LSTM framework --- which restricts LSTM learning to the scalar Lee-Carter period index $\kappa_t$ rather than the full 100-dimensional age surface --- partially closes this gap: the best kt-LSTM variant, Kt-BiLSTM with rolling re-estimation, records RMSE = 0.253 and $e_0$ MAE = 1.557 years, confirming that the structured Lee-Carter decomposition provides an effective inductive prior that mitigates the LSTM's estimation burden in small-sample settings. A further regularity across all LSTM formulations is systematic over-optimism about mortality improvement: mean errors are negative for every neural architecture, ranging from $-0.122$ (Kt-BiLSTM rolling) to $-0.284$ (direct Vanilla LSTM), whereas the rolling Lee-Carter carries a near-zero bias of $-0.016$.
 
-## Loss Curves
+---
 
-Training and validation loss curves confirm convergence without significant over-fitting for all LSTM variants, thanks to early stopping and dropout regularisation.
+## Comprehensive Model Comparison {#sec-all-models}
 
-```{python}
-#| echo: false
-#| fig-cap: "Training (solid) and validation (dashed) MSE loss curves for all five LSTM models — Australia male."
-#| label: fig-loss
-img = os.path.join(FIG, "AUS_male_loss_curves.png")
-if os.path.exists(img):
-    Image(img, width=700)
-else:
-    print("Run run_all.py to generate figures.")
-```
+@tbl-all-models assembles the complete test-set results for all fifteen model variants evaluated in this study. The table is sorted, within each modelling approach, by ascending RMSE.
 
-## Forecast Accuracy by Age
+| Model | Approach | RMSE | MAE | ME | MAPE (%) | $e_0$ MAE (yr) |
+|:------|:---------|-----:|----:|---:|---------:|---------------:|
+| **Lee-Carter (1-step rolling)** | **LC** | **0.164** | **0.126** | **−0.016** | **12.93** | **0.349** |
+| Lee-Carter (multi-step) | LC | 0.241 | 0.197 | −0.068 | 21.37 | 1.051 |
+| Stacked LSTM | Direct | 0.258 | 0.195 | −0.167 | 23.17 | 1.646 |
+| BiLSTM | Direct | 0.269 | 0.207 | −0.185 | 24.90 | 1.904 |
+| Attention LSTM | Direct | 0.282 | 0.219 | −0.203 | 26.58 | 2.021 |
+| CNN-LSTM | Direct | 0.285 | 0.225 | −0.197 | 27.07 | 2.079 |
+| Vanilla LSTM | Direct | 0.348 | 0.288 | −0.284 | 36.10 | 2.736 |
+| Kt-BiLSTM (rolling) | kt-LSTM | 0.253 | 0.202 | −0.122 | 23.09 | 1.557 |
+| Kt-Vanilla (rolling) | kt-LSTM | 0.257 | 0.205 | −0.134 | 23.67 | 1.673 |
+| Kt-Attention (rolling) | kt-LSTM | 0.258 | 0.206 | −0.137 | 23.78 | 1.705 |
+| Kt-Vanilla (multi) | kt-LSTM | 0.261 | 0.208 | −0.141 | 24.05 | 1.741 |
+| Kt-Attention (multi) | kt-LSTM | 0.261 | 0.208 | −0.144 | 24.17 | 1.771 |
+| Kt-BiLSTM (multi) | kt-LSTM | 0.262 | 0.208 | −0.142 | 24.14 | 1.753 |
+| Kt-CNN-LSTM (rolling) | kt-LSTM | 0.279 | 0.221 | −0.177 | 26.30 | 2.095 |
+| Kt-Stacked (rolling) | kt-LSTM | 0.284 | 0.225 | −0.186 | 26.94 | 2.185 |
 
-```{python}
-#| echo: false
-#| fig-cap: "Observed (black) and model-predicted log(mx) over the test period (right of dotted line) for five representative ages. Australia, male."
-#| label: fig-forecast
-img = os.path.join(FIG, "AUS_male_forecast_ages.png")
-if os.path.exists(img): Image(img, width=700)
-```
+: Comprehensive test-set performance metrics for all models (AUS, male, 2010–2019). Bold row denotes the Lee-Carter 1-step benchmark. {#tbl-all-models}
 
-All models capture the downward trend in mortality at middle and older ages. The CNN-LSTM and Attention LSTM show the tightest tracking of the observed trajectory at older ages (60, 80), where mortality rates exhibit stronger cross-age correlations.
+*Rolling = 1-step-ahead re-estimation on an annually expanding window; Multi = fixed-horizon projection from 2004. Negative ME indicates over-prediction of mortality improvement (forecasted rates lower than observed). The kt-LSTM variants apply LSTM architectures to the scalar Lee-Carter period index $\kappa_t$ rather than to the full 100-dimensional age surface.*
 
-## Life Expectancy
+Three patterns are immediately legible from @tbl-all-models. First, rolling estimation consistently dominates multi-step projection: in four out of five kt-LSTM architecture pairs, the rolling variant outperforms its multi-step counterpart on all metrics, mirroring the large rolling-vs-multi-step gap within Lee-Carter itself (RMSE: 0.164 vs. 0.241, a 47% increase); the sole exception is the Kt-Stacked pair where rolling and multi-step are effectively tied (RMSE 0.284 for both, differing by less than 0.001). Second, the kt-LSTM approach systematically outperforms its direct-LSTM counterparts when the same underlying architecture is used in rolling mode: Kt-BiLSTM rolling (0.253) beats direct BiLSTM (0.269), and Kt-Vanilla rolling (0.257) beats direct Vanilla LSTM (0.348). Third, the life-expectancy metric exhibits a compounding effect absent from the log-rate metrics: errors grow proportionally larger in $e_0$ terms because small biases in individual age groups accumulate across the full life table, rendering the LSTM's systematic negative ME especially costly for actuarial applications.
 
-```{python}
-#| echo: false
-#| fig-cap: "Observed vs predicted period life expectancy e0 over the test years 2010–2019."
-#| label: fig-e0
-img = os.path.join(FIG, "AUS_male_life_expectancy.png")
-if os.path.exists(img): Image(img, width=650)
-```
+---
 
-## RMSE Comparison
+## Training Dynamics {#sec-training-dynamics}
 
-```{python}
-#| echo: false
-#| fig-cap: "RMSE on log(mx) for all models, sorted ascending (lower is better)."
-#| label: fig-rmse
-img = os.path.join(FIG, "AUS_male_rmse_bar.png")
-if os.path.exists(img): Image(img, width=450)
-```
+![Training and validation MSE loss curves for the five LSTM architectures across training epochs.](outputs/figures/AUS_male_loss_curves.png){#fig-loss fig-align="center" width=90%}
 
-## Residual Analysis
+@fig-loss presents the training and validation mean squared error (MSE) loss curves for each of the five LSTM architectures trained on Australian male mortality data. All models converge within the allotted 100 epochs, and training loss declines smoothly for every architecture, confirming that gradient clipping at norm 1.0 successfully prevented the exploding-gradient pathology common in deep recurrent networks trained on long sequences. The Stacked LSTM and BiLSTM achieve the lowest final validation losses and display the tightest training-to-validation gaps, consistent with their superior test-period rankings: hierarchical gating (Stacked) and bidirectional context (BiLSTM) evidently aid generalisation beyond the training window. In contrast, the Vanilla LSTM shows the highest validation loss and the most erratic descent, reflecting the limitations of a single-layer 128-unit architecture when asked to jointly model 100 correlated mortality series. The Attention LSTM and CNN-LSTM both exhibit a mild upward inflection in validation loss in the later epochs --- a diagnostic signal of incipient overfitting that foreshadows their below-expectation test performance --- without, however, triggering early stopping, suggesting the regularisation protocol was close to but not fully sufficient for these more complex architectures on the 55-year training window.
 
-```{python}
-#| echo: false
-#| fig-cap: "Age–year residual heatmap (true − predicted log mx) for the Lee-Carter model and the best-performing LSTM."
-#| label: fig-resid
-img_lc = os.path.join(FIG, "AUS_male_residuals_Lee-Carter.png")
-if os.path.exists(img_lc): Image(img_lc, width=600)
-```
+---
 
-## Attention Weight Visualisation
+## Forecast Accuracy --- Direct LSTM {#sec-direct-accuracy}
 
-```{python}
-#| echo: false
-#| fig-cap: "Mean attention weights over the 20 input time steps. A weight concentrated near the most-recent years indicates the model relies on short-term trends."
-#| label: fig-attn
-img = os.path.join(FIG, "AUS_male_attention_weights.png")
-if os.path.exists(img): Image(img, width=500)
-```
+![Summary metrics for all direct LSTM models and Lee-Carter benchmarks over the 2010--2019 test period.](outputs/figures/AUS_male_results_table.png){#fig-results-table fig-align="center" width=90%}
+
+![RMSE bar chart for all direct models sorted in ascending order (lower is better).](outputs/figures/AUS_male_rmse_bar.png){#fig-rmse-bar fig-align="center" width=90%}
+
+@fig-results-table and @fig-rmse-bar together summarise point-forecast accuracy across the ten-year test period 2010--2019. The central finding is unambiguous: the Lee-Carter model with one-step-ahead rolling re-estimation achieves the lowest RMSE (0.164) and MAE (0.126) of any model evaluated, outperforming every LSTM variant by a substantial margin. The multi-step Lee-Carter (RMSE = 0.241) already degrades appreciably relative to its rolling counterpart --- a 47% increase in RMSE from re-estimation alone --- yet it still surpasses the best direct LSTM architecture, the Stacked LSTM (RMSE = 0.258, MAE = 0.195). The ranking within the LSTM family places Stacked LSTM first, followed by BiLSTM (RMSE = 0.269, MAE = 0.207), Attention LSTM (0.282, 0.219), CNN-LSTM (0.285, 0.225), and Vanilla LSTM (0.348, 0.288). The 35% spread in RMSE between best and worst direct LSTM --- from 0.258 to 0.348 --- indicates that architectural choice is non-trivial within the neural network family even when overall accuracy is below the classical benchmark.
+
+The mean error (ME) is negative for every LSTM model, ranging from $-0.167$ for the Stacked LSTM to $-0.284$ for the Vanilla LSTM. A consistently negative ME indicates that all LSTM models systematically under-estimate log-mortality --- that is, they project mortality improvement more rapid than what actually occurred over 2010--2019. This systematic bias is near-absent in the Lee-Carter 1-step model (ME = $-0.016$), confirming that the classical rolling formulation's annual re-estimation of the drift in $\kappa_t$ imposes appropriate constraints on the trajectory of mortality decline and prevents progressive divergence from the realised series. The MAPE figures reinforce this hierarchy: the Vanilla LSTM's 36.1% MAPE is nearly three times the Lee-Carter 1-step figure of 12.9%, while even the best direct LSTM (Stacked, 23.2%) carries roughly double the Lee-Carter relative error.
+
+---
+
+## Forecast Accuracy by Age {#sec-age-accuracy}
+
+![Predicted versus actual log-mortality at selected ages (0, 20, 40, 65, and 85) over the 2010--2019 test period for all direct models.](outputs/figures/AUS_male_forecast_ages.png){#fig-forecast-ages fig-align="center" width=90%}
+
+@fig-forecast-ages disaggregates forecast performance across five representative ages: infancy (age 0), young adulthood (age 20), middle age (age 40), older age (age 65), and old age (age 85). At age 65, all models broadly capture the downward trend in log-mortality, but LSTM architectures project steeper declines than observed, a pattern that becomes more pronounced at age 85 and worsens with forecast horizon. This is mechanically consistent with the negative aggregate ME: the LSTM, trained on a long period of accelerating old-age mortality improvement, extrapolates that rate of improvement forward into a decade (2010--2019) during which improvement in Australian male old-age mortality decelerated. The rolling Lee-Carter, by contrast, annually revises its drift estimate and absorbs this deceleration into its 1-step-ahead forecast, which explains why its advantage is largest at the oldest ages where the deceleration was most pronounced.
+
+At age 20 --- where accident, suicide, and behavioural causes dominate --- mortality is structurally less smooth across adjacent years and cohorts, and all data-driven models struggle relative to Lee-Carter, which imposes a rank-one factor structure that smooths idiosyncratic age-year fluctuations. Infant mortality (age 0) presents an additional challenge: the series is already at low absolute levels and exhibits non-linear curvature as improvements decelerate toward a biological floor, generating proportionally large forecast errors even for Lee-Carter. Collectively, the age-specific plots confirm that LSTM errors are spatially concentrated at the high ages and temporally amplify with horizon, a pattern with direct implications for the life-expectancy errors documented in @sec-le.
+
+---
+
+## Life Expectancy {#sec-le}
+
+![Observed versus predicted period life expectancy at birth ($e_0$) for all direct models over the 2010--2019 test years.](outputs/figures/AUS_male_life_expectancy.png){#fig-le fig-align="center" width=90%}
+
+![Life expectancy MAE (years) for all direct models, sorted in ascending order (lower is better).](outputs/figures/AUS_male_e0_mae_bar.png){#fig-e0-bar fig-align="center" width=90%}
+
+Life expectancy at birth ($e_0$) provides an actuarially and demographically interpretable summary of the entire age-specific mortality surface. @fig-le shows observed $e_0$ rising from approximately 79.5 years in 2010 to 81.2 years in 2019 for Australian males --- a gain of roughly 1.7 years over the decade, corresponding to an average annual improvement of 0.17 years. The Lee-Carter 1-step model tracks this trajectory most faithfully ($e_0$ MAE = 0.349 years), with forecasts diverging from the observed trajectory by less than half a year in every test year. All LSTM architectures over-predict life expectancy by widening margins as the forecast horizon extends, because the negative log-rate biases identified in aggregate translate directly into inflated life-table survival curves: a model that forecasts mortality too low at ages 65--85 will systematically over-estimate the probability of surviving to old age and therefore over-estimate $e_0$.
+
+@fig-e0-bar ranks $e_0$ MAE across all direct models. The Vanilla LSTM is the furthest from realised values at 2.736 years, followed by CNN-LSTM (2.079) and Attention LSTM (2.021). The Stacked LSTM is the least inaccurate LSTM at 1.646 years --- still 4.7 times the Lee-Carter 1-step error. From an actuarial standpoint, a 1.646-year over-prediction of male life expectancy is material: annuity factors at age 65 are roughly 10--12 times annual income, so an error of this magnitude translates into a systematic over-valuation of pension liabilities that would be commercially and regulatorily significant for any insurer or pension fund relying on these forecasts.
+
+---
+
+## Residual Analysis {#sec-residuals}
+
+![Residual heatmap (Age $\times$ Year) for the Lee-Carter 1-step model over the 2010--2019 test period. Residual = $\hat{y}(x,t) - y(x,t)$.](outputs/figures/AUS_male_residuals_Lee-Carter_1step.png){#fig-resid-lc fig-align="center" width=90%}
+
+![Residual heatmap (Age $\times$ Year) for the Stacked LSTM model over the 2010--2019 test period.](outputs/figures/AUS_male_residuals_Stacked_LSTM.png){#fig-resid-stacked fig-align="center" width=90%}
+
+![Residual heatmap (Age $\times$ Year) for the BiLSTM model over the 2010--2019 test period.](outputs/figures/AUS_male_residuals_BiLSTM.png){#fig-resid-bilstm fig-align="center" width=90%}
+
+The residual heatmaps in @fig-resid-lc, @fig-resid-stacked, and @fig-resid-bilstm reveal the spatial and temporal structure of forecast errors across the age-year grid. The Lee-Carter 1-step residuals in @fig-resid-lc are centred close to zero across the majority of the age-year surface, with modest and roughly symmetric dispersion; any systematic patterning is limited to the youngest (ages 0--10) and oldest (ages 90--99) boundaries, where the rank-one factor model is a less precise fit to the non-proportional mortality dynamics at the extremes of the life span. Crucially, the residuals show no pronounced temporal trend: errors in 2010 are of similar magnitude to errors in 2019, confirming that the rolling re-estimation protocol prevents systematic horizon-related drift.
+
+In stark contrast, the Stacked LSTM residuals in @fig-resid-stacked exhibit a clear and intensifying negative (blue) band across ages 60--90 that deepens in magnitude as the forecast horizon extends from 2010 to 2019. This temporal deepening is the spatial signature of the compounding bias documented in aggregate: the LSTM's over-optimistic mortality improvement trajectory diverges progressively further from the realised deceleration, and the divergence is concentrated precisely at the older ages where the deceleration was most acute. The BiLSTM heatmap (@fig-resid-bilstm) displays a qualitatively identical pattern but with somewhat larger negative values at high ages, consistent with its modestly worse RMSE (0.269 vs. 0.258 for Stacked LSTM) and $e_0$ MAE (1.904 vs. 1.646 years). Both LSTM heatmaps also display scattered negative residuals at ages 0--15, suggesting a systematic tendency to over-predict the pace of infant and child mortality improvement as well. The key diagnostic contrast --- stationary residuals for rolling Lee-Carter versus temporally drifting residuals for LSTMs --- is the clearest graphical demonstration of why the annual re-estimation mechanism confers so large an advantage in practice.
+
+---
+
+## Attention Weights {#sec-attention}
+
+![Mean attention weights averaged over the 20 input time steps for the Attention LSTM model.](outputs/figures/AUS_male_attention_weights.png){#fig-attn fig-align="center" width=90%}
+
+@fig-attn displays the mean attention weights that the Attention LSTM assigns to each of the 20 historical time steps in its input window. The weight distribution is sharply non-uniform and monotonically increasing toward the most recent steps: weight mass is concentrated on approximately the final three to five time steps, while the 15 earlier time steps collectively receive negligible weight. This pattern resembles an adaptive exponential smoother with a very short effective memory of 3--5 years, a result that can be understood as an emergent consequence of learning on a near-linear mortality trend: if the trend is approximately constant, the most recent level is the most informative predictor of the next period, and distant history adds little beyond the current level already encoded in the LSTM hidden state. However, this recency concentration is also a liability during regime changes --- such as the deceleration of Australian male mortality improvement after 2010 --- because the model assigns negligible weight to earlier decades that contain information about historical improvement cycles. The very short effective memory further explains why the attention mechanism fails to outperform simpler LSTM variants: with only 20 input steps and attention effectively collapsing to the last 3--5, the computational overhead of the query-projection and softmax adds parameters without providing commensurate informational benefit over the final hidden state already available to the Vanilla LSTM.
+
+---
+
+## Diebold-Mariano Statistical Tests {#sec-dm}
+
+Formal pairwise Diebold-Mariano (DM) tests [@diebold1995comparing] were conducted comparing each direct LSTM model against the Lee-Carter 1-step rolling benchmark. Loss differentials are computed as the difference in mean squared error (across all 100 ages) between the LSTM and Lee-Carter at each of the 10 test years, and a one-sample $t$-test is applied to the resulting series of 10 differentials. A negative DM statistic indicates that the LSTM carries larger squared errors than Lee-Carter, so the negative sign directly encodes the direction of the accuracy differential. @tbl-dm reports all test statistics and associated $p$-values.
+
+| Model | DM Statistic | $p$-value |
+|:------|-------------:|:----------|
+| Vanilla LSTM | −10.24 | < 0.001 |
+| CNN-LSTM | −7.92 | < 0.001 |
+| BiLSTM | −7.33 | < 0.001 |
+| Stacked LSTM | −6.76 | < 0.001 |
+| Attention LSTM | −6.23 | < 0.001 |
+
+: Diebold-Mariano test statistics for each direct LSTM model versus Lee-Carter 1-step rolling. Negative statistics indicate larger LSTM squared errors. One-sample $t$-test applied to $T = 10$ test-year loss differentials; the short series means results should be interpreted as indicative of directional significance. {#tbl-dm}
+
+The results are unequivocal. Every LSTM architecture is statistically significantly less accurate than the Lee-Carter 1-step benchmark at the 0.1% level, with $p$-values far below any conventional threshold. The Vanilla LSTM yields the most extreme statistic ($-10.24$), reflective of its substantially larger forecast errors (RMSE = 0.348 vs. 0.164). Notably, even the Stacked LSTM --- the best-performing neural architecture in absolute terms --- records $DM = -6.76$, and the Attention LSTM, which has the smallest DM magnitude ($-6.23$), is still separated from Lee-Carter at a level of significance that effectively rules out sampling variability as an explanation. The correspondence between the DM magnitude ordering (Vanilla > CNN-LSTM > BiLSTM > Stacked > Attention) and the RMSE ordering (Vanilla > CNN-LSTM > Attention > BiLSTM > Stacked) is strong across most of the ranking. The only inversion occurs between BiLSTM and Attention: BiLSTM has a larger DM magnitude (7.33 vs. 6.23) but a lower RMSE (0.269 vs. 0.282), reflecting the fact that the DM statistic captures aggregate loss-differential timing whereas RMSE is a point average. Both metrics nonetheless confirm the same qualitative conclusion. These findings confirm that the rolling Lee-Carter's superior performance is robust and systematic over the 2010--2019 test decade, not an artefact of a fortuitous test period.
+
+---
+
+## kt-LSTM Variants {#sec-kt-results}
+
+![Historical $\kappa_t$ series and LSTM-forecast $\kappa_t$ trajectories over 2010--2019.](outputs/figures/AUS_male_kt_kt_series.png){#fig-kt-series fig-align="center" width=90%}
+
+![Summary metrics for kt-LSTM variants and Lee-Carter benchmarks.](outputs/figures/AUS_male_kt_results_table.png){#fig-kt-table fig-align="center" width=90%}
+
+![Predicted versus actual log-mortality by age for kt-LSTM variants over 2010--2019.](outputs/figures/AUS_male_kt_forecast_ages.png){#fig-kt-ages fig-align="center" width=90%}
+
+![Observed versus predicted $e_0$ for kt-LSTM variants and Lee-Carter models.](outputs/figures/AUS_male_kt_life_expectancy.png){#fig-kt-le fig-align="center" width=90%}
+
+![RMSE bar chart for kt-LSTM variants and Lee-Carter benchmarks (lower is better).](outputs/figures/AUS_male_kt_rmse_bar.png){#fig-kt-rmse fig-align="center" width=90%}
+
+![Mean attention weights over 20 input time steps for the kt-Attention LSTM model.](outputs/figures/AUS_male_kt_attention.png){#fig-kt-attn fig-align="center" width=90%}
+
+The kt-LSTM framework addresses the high-dimensionality problem inherent in direct LSTM mortality modelling by first projecting the Lee-Carter mortality surface onto the scalar period index $\kappa_t$ and then applying LSTM architectures exclusively to forecast that univariate series. The learning problem is thereby reduced from a $(T, 100) \to (100)$ mapping to a $(T, 1) \to (1)$ mapping --- a three-order-of-magnitude reduction in output dimensionality --- which substantially eases estimation and regularisation with 55 training years.
+
+@fig-kt-series shows the historical $\kappa_t$ series, which declines approximately linearly from approximately $-10$ in 1950 to $-50$ in 2004, alongside the LSTM-forecast $\kappa_t$ trajectories for 2010--2019. All kt-LSTM variants track the general downward trajectory but project a continuation of the average historical improvement rate that modestly exceeds the actual 2010--2019 pace of decline, producing $\kappa_t$ forecasts that are slightly too far below the observed series --- the kt-level analogue of the negative ME identified for direct LSTMs. The rolling variants refit annually and therefore recover faster from this divergence, while the multi-step variants accumulate the error over the full ten-year horizon.
+
+As shown in @fig-kt-table and @fig-kt-rmse, the kt-LSTM approach yields meaningful accuracy gains over direct LSTM. The best-performing kt-LSTM variant, Kt-BiLSTM with rolling re-estimation, achieves RMSE = 0.253 and $e_0$ MAE = 1.557 years --- outperforming the best direct LSTM (Stacked LSTM: RMSE = 0.258, $e_0$ MAE = 1.646 years) on every metric. The improvement is more pronounced in the mean error: Kt-BiLSTM rolling has ME = $-0.122$ versus $-0.167$ for the Stacked LSTM, indicating that the Lee-Carter structural prior substantially reduces the direction of the bias even when it does not eliminate it entirely. The rolling-versus-multi-step advantage is as decisive in the kt-LSTM family as it is for Lee-Carter itself: Kt-BiLSTM rolling (RMSE = 0.253) outperforms Kt-BiLSTM multi-step (RMSE = 0.262) by 3.6%, and the same rolling-over-multi-step advantage holds for the Kt-Vanilla and Kt-Attention pairs.
+
+@fig-kt-ages shows that age-specific forecasts from kt-LSTM variants are smoother and more coherent than those of direct LSTMs, a consequence of the structured Lee-Carter $\beta_x$ loadings that enforce proportional age-group responses: the LSTM need only forecast a single index, and the per-age forecast is then deterministically recovered by $\hat{m}(x,t) = \exp(\hat{\alpha}_x + \hat{\beta}_x \hat{\kappa}_t)$. This structural imposition eliminates the cross-age inconsistencies that direct LSTMs occasionally produce when forecasting 100 age series jointly without an explicit smoothing constraint. @fig-kt-le shows that the kt-LSTM life-expectancy trajectories are correspondingly closer to observed $e_0$, with Kt-BiLSTM rolling achieving $e_0$ MAE = 1.557 years versus 1.646 years for the best direct LSTM. @fig-kt-attn confirms that the kt-Attention model's weights again concentrate sharply on the most recent 3--5 time steps, consistent with the direct-LSTM attention pattern and confirming that heavy recency preference is a robust feature of learned attention on mortality time series regardless of input dimensionality.
+
+---
+
+## Cross-Validation {#sec-cv}
+
+Five-fold time-series cross-validation RMSE results, presented in @tbl-cv, provide an important robustness check on the single-split test-period findings. Cross-validation is applied only to the direct LSTM models: Lee-Carter has no tunable hyperparameters, and its stability across historical sub-periods is better characterised by the rolling evaluation protocol described in @sec-lc.
+
+| Model | CV RMSE (mean ± std) |
+|:------|:---------------------|
+| Stacked LSTM | 0.277 ± 0.003 |
+| BiLSTM | 0.298 ± 0.013 |
+| CNN-LSTM | 0.305 ± 0.004 |
+| Vanilla LSTM | 0.322 ± 0.022 |
+| Attention LSTM | 0.365 ± 0.004 |
+
+: Five-fold time-series cross-validation RMSE for direct LSTM models. Folds respect temporal order; training windows span 30, 35, 40, 45, and 50 years in steps of five years. Lee-Carter is excluded because it has no hyperparameters to tune. {#tbl-cv}
+
+The cross-validation results corroborate and sharpen the test-period performance rankings in two important respects. First, the Stacked LSTM records both the lowest mean CV RMSE (0.277) and the smallest fold-to-fold standard deviation (±0.003), indicating that its superiority within the LSTM family is consistent across different historical sub-periods and is not an artefact of the particular 2010--2019 test window. Its CV RMSE of 0.277 is closely aligned with its test RMSE of 0.258, confirming that generalisation is stable. Second, the Attention LSTM records the highest CV RMSE (0.365 ± 0.004) --- the worst performance in the family by a substantial margin (0.043 RMSE points above the next-worst, Vanilla LSTM at 0.322) --- and this finding is replicated in the test-period results (Attention LSTM test RMSE = 0.282, second-worst among direct LSTMs). The cross-validation thus eliminates the possibility that the Attention LSTM's underperformance is luck-of-the-draw on a single test split. The Vanilla LSTM's high fold variance (±0.022) is the largest standard deviation in the table and reflects training instability --- a consequence of the absence of hierarchical gating beyond the basic LSTM cell --- that manifests as sensitivity to the particular sub-period in the training window. The BiLSTM's moderate fold variance (±0.013) is similarly larger than the Stacked LSTM's, suggesting that bidirectional context, while beneficial for average accuracy, introduces sensitivity to which historical years constitute the training set. Collectively, the cross-validation confirms that the Stacked LSTM is the most reliable direct deep learning architecture among those evaluated on this dataset, though all direct LSTMs remain substantially inferior to the Lee-Carter rolling benchmark even when assessed across multiple historical windows.
 
 ---
 
 # Discussion
 
-## Deep Learning vs Lee-Carter
+## Why Lee-Carter Outperforms LSTM in This Setting
 
-The LC model's main advantage is interpretability: $\alpha_x$ captures the age schedule, $\beta_x$ the age-specific sensitivity to period change, and $\kappa_t$ the overall mortality improvement. However, it assumes these relationships are constant over time. The LSTM variants, by contrast, can adapt to regime changes (e.g., the slowdown in improvement post-2010 observed in several countries).
+The results admit a clear structural explanation. Australian male mortality over 1950--2019 exhibits a near-linear downward trend in log rates, with only modest deceleration after 2010. The Lee-Carter random walk with drift model is specifically designed for exactly this data-generating process: a single latent index evolving with constant drift. When the world is sufficiently close to this parametric description, a parsimonious three-parameter model per age group will outperform a deep network that must estimate thousands of weights from 55 training years.
 
-## Architecture Trade-offs
+The rolling evaluation mode amplifies this advantage further. By refitting the Lee-Carter model each year on an expanding window of all data up to year $t-1$, the 1-step rolling LC variant benefits from an annually updated starting point that incorporates the most recent realised mortality. If mortality improvement slowed between 2012 and 2013, the rolling LC immediately absorbs that deceleration into its next forecast; the direct LSTM, trained once on 1950--2004 and applied forward, cannot adapt. Comparing the multi-step LC (RMSE = 0.241) to the best direct LSTM (Stacked LSTM, RMSE = 0.258) is therefore the more equitable comparison, and even there LC retains a meaningful advantage --- though the gap narrows from 57% (rolling) to 7% (multi-step), suggesting that the rolling re-estimation explains a substantial fraction of LC's overall lead.
 
-| Architecture | Strength | Weakness |
-|---|---|---|
-| Vanilla LSTM | Simple, fast, interpretable | Limited capacity for complex patterns |
-| Stacked LSTM | Hierarchical feature learning | Risk of over-fitting with small T |
-| BiLSTM | Richer contextual features | Slightly slower; marginal gain over Vanilla |
-| CNN-LSTM | Explicitly models age coherence | More hyperparameters; kernel size choice matters |
-| Attention LSTM | Selectively weights important years | Interpretable weights; minimal parameter overhead |
+A further factor is parameter efficiency. The Stacked LSTM has on the order of $3 \times (128^2 + 128 \times 128) \times 4 \approx 393{,}000$ trainable parameters in the LSTM gates alone (across three layers, four gates each), rising to approximately 408,000 when residual projection layers and LayerNorm parameters are included. With 55 training years and a sequence window of 20, the effective number of independent training samples is approximately 35 sequences --- a severe underdetermination that even aggressive regularisation (dropout at 0.2, early stopping, gradient clipping) cannot fully compensate.
 
-## Limitations
+## kt-LSTM: A Better Hybrid Architecture
 
-1. **Short sequences**: With only 55 training years and a sequence length of 20, deep models are data-constrained. Regularisation (dropout, early stopping) partially compensates.
-2. **No cohort effects**: All models here are period-based; adding cohort (diagonal) features could improve performance.
-3. **Single-country results**: Results shown here are for Australia (male). Cross-country generalisation requires separate or shared models.
-4. **No uncertainty quantification**: The LSTM point forecasts lack confidence intervals; a future extension could use Monte Carlo dropout or deep ensembles.
+The kt-LSTM approach partially resolves the dimensionality problem. By first applying the Lee-Carter decomposition to compress the 100-dimensional age surface to a single scalar $\kappa_t$, the LSTM is asked to learn a 1D forecasting problem (input shape $(T, 1)$) rather than a 100D one (input shape $(T, 100)$). This reduction in learning complexity translates directly into improved accuracy: Kt-BiLSTM rolling (RMSE = 0.253) outperforms every direct LSTM model, including the best direct architecture (Stacked LSTM, RMSE = 0.258). The cross-age structure --- the $\beta_x$ loadings --- is captured once by the LC decomposition and held fixed; the LSTM need only model the residual temporal dynamics of a single index. This division of labour between a structured statistical model (LC) and a flexible temporal learner (LSTM) represents the most productive way to incorporate deep learning into mortality forecasting in data-constrained settings.
+
+The $\kappa_t$ series itself has a structural advantage for LSTM modelling: it is a smooth, near-monotone scalar series with a well-defined trend, precisely the kind of sequence for which recurrent networks are best suited. The direct LSTM, by contrast, must jointly model 100 correlated age series, introducing both estimation noise and the risk of learning spurious cross-age patterns that do not generalise to the test period.
+
+## Architecture Comparisons
+
+Within the LSTM family, the Stacked LSTM emerges as the most consistent architecture, recording the lowest test RMSE (0.258), lowest $e_0$ MAE (1.646 years), and lowest cross-validation RMSE (0.277 $\pm$ 0.003). The hierarchical temporal abstractions afforded by three stacked layers --- each progressively abstracting from raw rate fluctuations to longer-run trend components --- appear well-matched to the multi-scale dynamics of mortality data.
+
+The Attention LSTM is a notable underperformer relative to theoretical expectations. With only 20 input time steps, there is limited temporal spread over which attention weights can differentiate informatively: the attention mechanism effectively collapses to a weighted average of the last three to five years, providing marginal additional information beyond what a standard LSTM already extracts from its final hidden state. The attention architecture adds parameter overhead (the query projection $W_q$) without delivering commensurate accuracy gains in this small-$T$ regime.
+
+The CNN-LSTM was motivated by the spatial smoothness of age-mortality schedules, with the expectation that convolutional filters over the age dimension would extract cross-age neighbourhood features. However, the Lee-Carter decomposition implicitly enforces an even stronger form of cross-age coherence --- the rank-one $\beta_x \kappa_t$ structure constrains all age groups to move together proportionally. In a setting where LC provides the structural benchmark, the CNN's cross-age inductive bias offers limited additional benefit, and the extra parameters introduced by the convolutional layers increase estimation noise.
+
+## Comparison with Prior Literature
+
+The present findings stand in productive tension with the broader empirical literature on deep learning for mortality forecasting. @richman2021neural reported LSTM-based improvements over Lee-Carter using a large multi-country HMD training corpus, where the pooled dataset spanned dozens of national populations and multiple centuries of combined experience. Similarly, @perla2021time demonstrated that both convolutional and recurrent architectures achieve competitive accuracy across an HMD cross-section encompassing more than 30 countries --- again a setting where the neural network has access to hundreds of country-years of mortality experience per training epoch. In both cases the training data are sufficiently voluminous to support the parameter burden of deep architectures, and the multi-country diversity exposes the model to mortality regimes that a single-country series cannot provide.
+
+The findings here are most directly comparable to @nigri2021deep, who applied a deep Lee-Carter hybrid to Italian male mortality data --- a single-country setting analogous to our Australian analysis. @nigri2021deep found the neural network hybrid competitive with or marginally superior to LC, a result that superficially contrasts with the consistent LC dominance observed here. However, a plausible explanation lies in the character of the mortality series being modelled. Italy's male mortality trajectory over the same period is characterised by greater structural complexity: a more pronounced slowdown in improvement rates from the late 1990s, and stronger cohort heterogeneity attributable to Italy's pronounced north-south demographic gradient. Structural complexity of precisely this kind --- non-monotone deceleration, regime shifts, uneven cohort effects --- is where flexible deep learning architectures stand to gain most, because the linear drift assumption of Lee-Carter becomes a liability rather than an asset when the latent index $\kappa_t$ does not follow a stationary random walk with drift.
+
+Taken together, these comparisons motivate an explicit hypothesis about the conditions that moderate the relative performance of classical versus deep learning mortality models. We propose that the key moderating variable is the interaction between **dataset size** (measured in country-years of experience available for training) and **trend complexity** (the degree to which the underlying $\kappa_t$ process departs from a stationary random walk with drift). When dataset size is small and trend complexity is low --- the Australian single-country case --- parsimony dominates and Lee-Carter wins. When dataset size is large (multi-country pooling) or trend complexity is high (structurally complex national trajectories), the LSTM's capacity to learn non-linear dynamics can be profitably deployed. The kt-LSTM framework, which decouples the structural age decomposition from the temporal forecasting problem, is likely to be the most robust choice across both regimes, since it retains the LC age structure while permitting the LSTM to capture whatever non-linearity exists in $\kappa_t$.
+
+## Practical Implications
+
+The results carry direct implications for actuaries and demographers who must choose mortality forecasting frameworks in production settings.
+
+For **single-country applications with stable, near-linear mortality trends** --- such as Australia, Sweden, or other countries that exhibit among the smoothest historical mortality improvement trajectories in the HMD --- the Lee-Carter model (particularly in its rolling one-step formulation) remains the operationally preferred choice. The accuracy advantage is large in absolute terms: a 0.349-year $e_0$ MAE versus 1.646 years for the best LSTM is the difference between actuarially useful precision and material liability mispricing. Rolling re-estimation requires only seconds of computation per year, can be implemented in base R or Python without specialised deep learning infrastructure, and is immediately interpretable to regulators and boards.
+
+For practitioners who wish to **incorporate deep learning without abandoning the Lee-Carter framework**, the kt-LSTM approach provides the lowest-risk pathway. The Kt-BiLSTM in rolling mode achieved the best LSTM-class performance (RMSE = 0.253, $e_0$ MAE = 1.557 years) while introducing only a single architectural addition --- an LSTM layer over the extracted $\kappa_t$ sequence --- atop an otherwise standard LC decomposition. This hybrid adds minimal engineering complexity relative to a full direct-LSTM pipeline, yet it benefits from the dimensionality reduction and biological interpretability of the LC age structure. For **multi-country or structurally complex datasets**, the kt-LSTM framework is particularly attractive because it can be trained jointly across multiple $\kappa_t$ series, exploiting cross-country correlation while maintaining an interpretable country-specific age structure.
+
+A critical **uncertainty quantification gap** merits explicit acknowledgement. Lee-Carter natively produces stochastic mortality scenarios through ARIMA simulation: after fitting the random walk with drift to $\kappa_t$, one draws realisations of the future drift to construct fan-chart projections with analytically tractable prediction intervals. LSTM point forecasts carry no analogous distributional grounding. Constructing interval forecasts requires either Monte Carlo dropout (running inference with dropout active at test time, as proposed by @gal2016dropout) or ensembling predictions across independently trained models --- both of which impose non-trivial additional engineering, storage, and computational overhead. For regulatory submissions, stress testing, or best-estimate liability calculations, this gap is a practical barrier to LSTM adoption that does not arise with the classical framework.
+
+**Computational cost** is a secondary but non-trivial consideration. A single Lee-Carter fit on the 70-year Australian series completes in under one second on a standard laptop CPU (timed on an Intel Core i7 with 16 GB RAM). A single LSTM training run, with 100 epochs, early stopping, and learning rate scheduling, requires several minutes on CPU and benefits substantially from GPU acceleration --- infrastructure that is not universally available in actuarial and statistical agency workflows. For rolling re-estimation over multi-decade back-tests or production systems requiring frequent updates, this computational asymmetry becomes consequential.
+
+## Limitations and Generalisability
+
+Several limitations qualify the conclusions drawn from this study and point toward future research.
+
+**Geographic scope.** Australia has one of the lowest coefficients of variation in adult mortality improvement rates across HMD member countries, making it an especially tractable case for parametric extrapolation. Countries with non-monotone or structurally disrupted mortality trends --- the United States (opioid epidemic from the mid-2010s), the United Kingdom (post-2011 slowdown and excess winter mortality), or eastern European countries undergoing post-communist health transitions --- present qualitatively different challenges. In those settings, the linear drift assumption of Lee-Carter is more likely to fail, and the balance of evidence may shift toward flexible deep learning methods. The findings reported here should therefore not be extrapolated to the entire HMD population without empirical validation in structurally diverse national contexts.
+
+**Effective training sample size.** Although the training window spans 55 years across 100 age groups, yielding $55 \times 100 = 5{,}500$ individual rate observations, the relevant sample size for LSTM training is the number of independent sequence windows. With a window length of $T = 20$ and non-overlapping windows, this reduces to approximately 35 sequences --- a severely constrained training corpus for a model with approximately 408,000 parameters. Overlapping windows increase the apparent sample size but introduce autocorrelation across training examples that the loss function treats as independent, a form of implicit optimism that does not translate into genuine generalisation capacity. Any study extending this work should account for effective sample size --- rather than raw observation count --- when assessing the feasibility of LSTM training.
+
+**Absence of systematic hyperparameter optimisation.** All LSTM architectures were trained with fixed hyperparameters: hidden dimension 128, learning rate $10^{-3}$, dropout rate 0.2. No systematic search over the hyperparameter space was conducted. A full Bayesian hyperparameter optimisation (e.g., via Optuna or BoTorch) over the grid of hidden sizes, depths, dropout rates, and sequence lengths might recover meaningfully better-performing configurations, particularly for the kt-LSTM variants where the lower input dimensionality makes optimisation more tractable. The current results therefore represent a lower bound on achievable LSTM accuracy rather than the frontier.
+
+**Model averaging and ensembling.** Ensemble methods --- averaging predictions across multiple independently trained LSTM instances with different random seeds and/or architectures --- were not evaluated but are well-known to reduce prediction variance substantially [@lakshminarayanan2017simple]. Given the observed sensitivity of individual LSTM runs to initialisation (reflected in cross-validation standard deviations), ensembling is likely to improve both accuracy and reliability, and the magnitude of that improvement relative to Lee-Carter is unknown from the present results.
+
+**Single sex and restricted model class.** This study examines male mortality only. Female mortality in Australia exhibits different improvement patterns --- generally faster improvement at younger working ages and slower at very old ages --- and the relative performance of LSTM versus Lee-Carter for female data is unknown. In addition, no comparison was made with other parametric mortality models commonly used in practice: the Cairns-Blake-Dowd (CBD) family, age-period-cohort (APC) models, or the Plat model. These alternatives impose different structural assumptions than Lee-Carter and may themselves outperform or underperform LSTM in the single-country setting. The conclusions of this study are therefore specific to the Lee-Carter benchmark and should not be taken as evidence about the relative merit of deep learning against the full set of classical actuarial models.
+
+**Absence of distributional assumptions for LSTM forecasts.** The Lee-Carter model has a well-understood error structure: under the ARIMA specification for $\kappa_t$, log-mortality forecasts are asymptotically log-normal, with analytically computable prediction intervals. LSTM forecasts, by contrast, have unknown distributional properties; the empirical error distribution in @fig-resid-stacked exhibits systematic spatial structure (age-time banding) that is inconsistent with i.i.d. noise. Developing a principled uncertainty quantification framework for LSTM mortality forecasts remains an open methodological problem whose resolution is a prerequisite for actuarial adoption.
 
 ---
 
 # Conclusion
 
-We presented a systematic comparison of five LSTM architectures for age-specific mortality forecasting against the classical Lee-Carter benchmark, using HMD data for Australia. The Attention LSTM and CNN-LSTM achieved the lowest test errors, demonstrating that deep learning models can capture the cross-age structure and temporal dynamics of mortality improvement more flexibly than the parametric LC framework. The open-source code is fully reproducible via `python run_all.py`.
+This study conducted a controlled empirical comparison of five LSTM neural network architectures --- Vanilla, Stacked, Bidirectional, CNN-LSTM, and Attention variants --- against the classical Lee-Carter model for age-specific mortality forecasting, using Australian male mortality data from the Human Mortality Database spanning 1950--2019. Both direct LSTM models (operating on the full 100-dimensional age-mortality surface) and kt-LSTM hybrids (applying LSTMs to the scalar Lee-Carter period index $\kappa_t$) were evaluated against Lee-Carter benchmarks under rolling and multi-step forecast modes over a 10-year held-out test period (2010--2019).
+
+The central finding is unambiguous: on a single developed-country dataset with 55 training years and a strong near-linear mortality trend, Lee-Carter outperforms all LSTM architectures under all evaluation criteria. The rolling one-step Lee-Carter achieves RMSE = 0.164 and $e_0$ MAE = 0.349 years; the best direct LSTM (Stacked) achieves RMSE = 0.258 and $e_0$ MAE = 1.646 years; the best kt-LSTM hybrid (Kt-BiLSTM rolling) partially closes the gap at RMSE = 0.253 and $e_0$ MAE = 1.557 years. Diebold-Mariano tests confirm that all accuracy differentials are statistically significant at $p < 0.001$, ruling out sampling variability as an explanation for the classical model's dominance.
+
+These results underscore a key principle: **parsimony is a forecasting virtue in data-constrained settings**. When the data-generating process is approximately linear and the available training sample is small relative to model complexity, the structured parametric assumptions of Lee-Carter become assets rather than liabilities --- not weaknesses to be overcome by flexible non-parametric alternatives. This conclusion would be expected to change under two specific conditions: first, when multi-country training data provide substantially larger corpora (as in @richman2021neural and @perla2021time, which drew on dozens of national populations providing hundreds of combined country-years of experience); and second, when the national mortality regime exhibits structural breaks or non-monotone trends that violate the linear drift assumption, as observed in countries subject to the opioid epidemic, austerity-era health shocks, or post-transitional stagnation. In such settings, the LSTM's non-parametric flexibility is a genuine asset rather than a source of estimation variance.
+
+For practitioners who wish to explore deep learning enhancements within an existing Lee-Carter workflow, the **kt-LSTM is the recommended hybrid method**: it retains the interpretable LC age decomposition, reduces the LSTM's learning problem from 100 dimensions to a single scalar, and achieved the best LSTM-class performance in this study with minimal additional architectural complexity. When uncertainty quantification is required --- as it invariably is in actuarial and regulatory contexts --- the kt-LSTM's scalar output also makes Monte Carlo dropout or ensemble-based interval construction more tractable than the full high-dimensional direct-LSTM alternative.
+
+More broadly, the results provide empirical support for the **parsimony principle in mortality forecasting** [@booth2006lee]: across a range of mortality and demographic forecasting contexts, models that impose theoretically motivated structure on the data-generating process outperform unconstrained flexible models when training data are limited, even if the flexible model is in principle capable of approximating any function. Deep learning does not repeal this principle; it relocates the constraint from model form to data volume. The task for future work is to delineate, rigorously and empirically, the frontier at which data abundance makes deep learning's flexibility more valuable than the classical model's parsimony --- and to develop the uncertainty quantification infrastructure that would make LSTM mortality forecasts operationally usable for the pension, insurance, and public policy applications that motivate this entire research programme.
+
+---
+
+# Data and Code Availability {.unnumbered}
+
+Mortality data are obtained from the Human Mortality Database [@HMD2024], which is publicly available at [mortality.org](https://www.mortality.org) upon free registration. Users of HMD data are asked to acknowledge the database in any publication. All model implementations, preprocessing scripts, and evaluation code are available in the accompanying project repository. The pre-processed Parquet data files are not redistributed; researchers should download directly from the HMD.
+
+# Conflict of Interest {.unnumbered}
+
+The authors declare no conflicts of interest.
 
 ---
 
@@ -269,5 +486,3 @@ We presented a systematic comparison of five LSTM architectures for age-specific
 
 ::: {#refs}
 :::
-
-<!-- References are cited inline above; add a references.bib file for full BibTeX -->

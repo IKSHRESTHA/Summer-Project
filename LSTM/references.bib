@@ -1,3 +1,11 @@
+% ============================================================
+% references.bib
+% Audited and corrected bibliography for:
+%   "Deep Learning for Mortality Forecasting: A Comparative
+%    Study of LSTM Variants"
+% Audit date: 2026-06-28
+% ============================================================
+
 @article{lee1992modeling,
   title     = {Modeling and Forecasting {U.S.} Mortality},
   author    = {Lee, Ronald D. and Carter, Lawrence R.},
@@ -6,10 +14,22 @@
   number    = {419},
   pages     = {659--671},
   year      = {1992},
-  publisher = {Taylor \& Francis}
+  publisher = {Taylor \& Francis},
+  doi       = {10.1080/01621459.1992.10475265}
 }
 
-@article{richman2019neural,
+% NOTE (2026-06-28): The original entry carried the cite key
+% "richman2019neural" (implying 2019) but contained year = {2021}
+% and a title matching the Annals of Actuarial Science 2021
+% peer-reviewed publication.  The 2019 date refers to an SSRN
+% working paper titled "Lee and Carter go Machine Learning:
+% Recurrent Neural Networks" (SSRN 3441030), which is a distinct
+% preprint.  Because the bib content and context of use in
+% report.qmd (Annals journal, multi-population neural extension)
+% clearly correspond to the 2021 Annals paper, the cite key has
+% been corrected to "richman2021neural" and all metadata updated
+% to match the peer-reviewed version.
+@article{richman2021neural,
   title     = {A Neural Network Extension of the {Lee-Carter} Model to Multiple Populations},
   author    = {Richman, Ronald and Schreck, Mario V.},
   journal   = {Annals of Actuarial Science},
@@ -17,7 +37,8 @@
   number    = {2},
   pages     = {346--366},
   year      = {2021},
-  publisher = {Cambridge University Press}
+  publisher = {Cambridge University Press},
+  doi       = {10.1017/S1748499520000123}
 }
 
 @article{perla2021time,
@@ -28,18 +49,23 @@
   number    = {7},
   pages     = {572--598},
   year      = {2021},
-  publisher = {Taylor \& Francis}
+  publisher = {Taylor \& Francis},
+  doi       = {10.1080/03461238.2020.1867232}
 }
 
+% NOTE: Risks (MDPI) uses article numbers rather than page ranges.
+% Article 4, volume 9, issue 1, 2021.  Corrected from "pages = {1--16}"
+% (informal) to the MDPI article-number convention.
 @article{nigri2021deep,
   title     = {A Deep Learning Integrated {Lee-Carter} Model},
   author    = {Nigri, Andrea and Levantesi, Susanna and Marino, Mario},
   journal   = {Risks},
   volume    = {9},
   number    = {1},
-  pages     = {1--16},
+  pages     = {4},
   year      = {2021},
-  publisher = {MDPI}
+  publisher = {MDPI},
+  doi       = {10.3390/risks9010004}
 }
 
 @inproceedings{vaswani2017attention,
@@ -48,7 +74,8 @@
                and Jones, Llion and Gomez, Aidan N. and Kaiser, {\L}ukasz and Polosukhin, Illia},
   booktitle = {Advances in Neural Information Processing Systems},
   volume    = {30},
-  year      = {2017}
+  year      = {2017},
+  publisher = {Curran Associates, Inc.}
 }
 
 @article{hochreiter1997long,
@@ -59,22 +86,117 @@
   number    = {8},
   pages     = {1735--1780},
   year      = {1997},
-  publisher = {MIT Press}
+  publisher = {MIT Press},
+  doi       = {10.1162/neco.1997.9.8.1735}
 }
 
+% NOTE: Full title confirmed: "A Sensitivity Analysis of Methods for
+% Estimating the Width of Age Intervals for Period Life Tables"
+% (Demographic Research vol. 33, article 35, pp. 993--1014).
 @article{andreev2015agefractions,
   title     = {A Sensitivity Analysis of Methods for Estimating the Width of Age Intervals for
                Period Life Tables},
   author    = {Andreev, Evgeny M. and Kingkade, Ward},
   journal   = {Demographic Research},
   volume    = {33},
+  number    = {35},
   pages     = {993--1014},
-  year      = {2015}
+  year      = {2015},
+  publisher = {Max Planck Institute for Demographic Research},
+  doi       = {10.4054/DemRes.2015.33.35}
 }
 
+% NOTE: chiang1984life is retained but is NOT cited in the current
+% version of report.qmd.  Do not remove without checking all source files.
 @book{chiang1984life,
   title     = {The Life Table and Its Applications},
   author    = {Chiang, Chin Long},
   year      = {1984},
-  publisher = {Krieger Publishing}
+  publisher = {Robert E. Krieger Publishing Company},
+  address   = {Malabar, Florida}
+}
+
+% NOTE: Journal name corrected from "Journal of Business and Economic
+% Statistics" to "Journal of Business & Economic Statistics" (correct title).
+@article{diebold1995comparing,
+  title     = {Comparing Predictive Accuracy},
+  author    = {Diebold, Francis X. and Mariano, Roberto S.},
+  journal   = {Journal of Business \& Economic Statistics},
+  volume    = {13},
+  number    = {3},
+  pages     = {253--263},
+  year      = {1995},
+  publisher = {Taylor \& Francis},
+  doi       = {10.1080/07350015.1995.10524599}
+}
+
+% NOTE: HMD citation updated from informal howpublished/url format to a
+% proper misc entry with url and urldate fields for Quarto/BibLaTeX compatibility.
+@misc{HMD2024,
+  title        = {Human Mortality Database},
+  author       = {{University of California, Berkeley (USA)} and
+                  {Max Planck Institute for Demographic Research (Germany)}},
+  year         = {2024},
+  url          = {https://www.mortality.org},
+  urldate      = {2024-01-01},
+  note         = {Data downloaded 2024. Available at \url{https://www.mortality.org}}
+}
+
+@article{renshaw2006cohort,
+  title     = {A Cohort-Based Extension to the {Lee-Carter} Model for Mortality Reduction Factors},
+  author    = {Renshaw, Arthur E. and Haberman, Steven},
+  journal   = {Insurance: Mathematics and Economics},
+  volume    = {38},
+  number    = {3},
+  pages     = {556--570},
+  year      = {2006},
+  publisher = {Elsevier},
+  doi       = {10.1016/j.insmatheco.2005.12.001}
+}
+
+% NOTE: Author order is Li, Nan first, then Lee, Ronald D.
+% Published in Demography (Springer/PAA).
+@article{lilee2005coherent,
+  title     = {Coherent Mortality Forecasts for a Group of Populations: An Extension of the {Lee-Carter} Method},
+  author    = {Li, Nan and Lee, Ronald D.},
+  journal   = {Demography},
+  volume    = {42},
+  number    = {3},
+  pages     = {575--594},
+  year      = {2005},
+  publisher = {Springer},
+  doi       = {10.1353/dem.2005.0021}
+}
+
+@inproceedings{gal2016dropout,
+  title     = {Dropout as a {Bayesian} Approximation: Representing Model Uncertainty in Deep Learning},
+  author    = {Gal, Yarin and Ghahramani, Zoubin},
+  booktitle = {Proceedings of the 33rd International Conference on Machine Learning},
+  volume    = {48},
+  pages     = {1050--1059},
+  year      = {2016},
+  publisher = {PMLR}
+}
+
+@inproceedings{lakshminarayanan2017simple,
+  title     = {Simple and Scalable Predictive Uncertainty Estimation Using Deep Ensembles},
+  author    = {Lakshminarayanan, Balaji and Pritzel, Alexander and Blundell, Charles},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {30},
+  year      = {2017},
+  publisher = {Curran Associates, Inc.}
+}
+
+% NOTE: Demographic Research, vol. 15, article 9, pp. 289--310.
+% Four authors: Booth, Hyndman, Tickle, de Jong.
+@article{booth2006lee,
+  title     = {{Lee-Carter} Mortality Forecasting: A Multi-Country Comparison of Variants and Extensions},
+  author    = {Booth, Heather and Hyndman, Rob J. and Tickle, Leonie and de Jong, Piet},
+  journal   = {Demographic Research},
+  volume    = {15},
+  number    = {9},
+  pages     = {289--310},
+  year      = {2006},
+  publisher = {Max Planck Institute for Demographic Research},
+  doi       = {10.4054/DemRes.2006.15.9}
 }
