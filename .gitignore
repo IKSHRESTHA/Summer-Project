@@ -10,6 +10,10 @@ LSTM/src/agent2_statistical_tests.py
 LSTM/src/agent3_tuning.py
 LSTM/src/agent4_actuarial.py
 
+LSTM/agent1_stride_experiments.py
+LSTM/agent2_statistical_tests.py
+LSTM/agent3_tuning.py
+LSTM/agent4_actuarial.py
 
 
 # ── ML model weights & checkpoints ───────────────────────────────────────────
