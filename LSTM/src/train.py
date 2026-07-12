@@ -25,6 +25,7 @@ def train_model(
     patience: int = 15,
     device: str = "cpu",
     verbose: bool = False,
+    trial=None,
 ) -> dict:
     """
     Train model with AdamW + ReduceLROnPlateau + early stopping.
@@ -91,6 +92,11 @@ def train_model(
 
         if verbose:
             print(f"Epoch {epoch:3d}  train={t_loss:.5f}  val={v_loss:.5f}")
+
+        if trial is not None:
+            trial.report(v_loss, epoch)
+            if trial.should_prune():
+                break
 
         if v_loss < best_val:
             best_val   = v_loss

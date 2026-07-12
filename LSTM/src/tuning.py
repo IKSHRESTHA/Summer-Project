@@ -95,7 +95,10 @@ def run_hpo(
             patience=8,
             device=device,
             verbose=False,
+            trial=trial,
         )
+        if trial.should_prune():
+            raise optuna.exceptions.TrialPruned()
         return min(hist["val_loss"])   # objective: minimise best val loss
 
     sampler = optuna.samplers.TPESampler(seed=seed)

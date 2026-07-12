@@ -131,7 +131,10 @@ def hpo_kt_model(model_class, loaders: dict, n_trials: int = 15,
         wd      = trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True)
         model   = model_class(hidden_size=hidden, dropout=dropout)
         hist    = train_model(model, loaders, epochs=hpo_epochs, lr=lr,
-                              weight_decay=wd, patience=15, device=device)
+                              weight_decay=wd, patience=15, device=device,
+                              trial=trial)
+        if trial.should_prune():
+            raise optuna.exceptions.TrialPruned()
         return min(hist["val_loss"])
 
     sampler = optuna.samplers.TPESampler(seed=seed)

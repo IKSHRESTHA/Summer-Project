@@ -78,8 +78,9 @@ class KtBiLSTM(nn.Module):
         self.linear = nn.Linear(hidden_size * 2, 1)
 
     def forward(self, x):
-        out, _ = self.lstm(x)
-        return self.linear(self.drop(self.norm(out[:, -1, :])))
+        _, (hn, _) = self.lstm(x)                      # hn: (2, batch, hidden)
+        out = torch.cat([hn[0], hn[1]], dim=-1)        # (batch, 2*hidden)
+        return self.linear(self.drop(self.norm(out)))
 
 
 class KtAttentionLSTM(nn.Module):

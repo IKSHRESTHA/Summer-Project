@@ -1,12 +1,16 @@
 """Bidirectional LSTM with LayerNorm for mortality forecasting."""
 
+import torch
 import torch.nn as nn
 
 
 class BidirectionalLSTM(nn.Module):
     """
-    Single BiLSTM layer.  Forward and backward hidden states from the last
-    time step are concatenated, normalised, then projected to n_ages outputs.
+    Single BiLSTM layer.  Forward and backward final hidden states are
+    concatenated (via hn), normalised, then projected to n_ages outputs.
+
+    hn[0] = forward direction final hidden  (has seen steps 0..T-1)
+    hn[1] = backward direction final hidden (has seen steps T-1..0)
 
     LayerNorm is applied over the 2*hidden concatenated vector.
 
@@ -23,6 +27,7 @@ class BidirectionalLSTM(nn.Module):
         self.linear = nn.Linear(hidden_size * 2, n_ages)
 
     def forward(self, x):
-        out, _ = self.lstm(x)                    # (batch, seq_len, 2*hidden)
-        out    = self.norm(out[:, -1, :])         # last step + LayerNorm
-        return self.linear(self.drop(out))        # (batch, n_ages)
+        _, (hn, _) = self.lstm(x)                         # hn: (2, batch, hidden)
+        out = torch.cat([hn[0], hn[1]], dim=-1)           # (batch, 2*hidden)
+        out = self.norm(out)
+        return self.linear(self.drop(out))                 # (batch, n_ages)

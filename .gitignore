@@ -42,6 +42,7 @@ logs/
 results/
 
 # ── AI assistant context files ────────────────────────────────────────────────
+PROJECT_SUMMARY.md
 CLAUDE.md
 CLAUDE.local.md
 **/CLAUDE.md
