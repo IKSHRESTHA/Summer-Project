@@ -1,27 +1,27 @@
 ---
-title: "Replicating 'Time-Series Forecasting of Mortality Rates Using Transformer': An Independent Empirical Assessment"
-author: "Mortality Forecasting Project"
-date: "2026-07-12"
+title: "Does the Transformer Really Beat Lee–Carter? An Independent Replication of Wang et al. (2024)"
+author:
+  - name: "Mortality Forecasting Project"
+date: "2026-07-13"
 lang: en-GB
 
 abstract: |
-  We independently replicate the study of Wang, Wen, Xiao and Wang (2024), which reported that a
-  small encoder--decoder Transformer outperforms the Lee-Carter model and RNN, LSTM, and CNN
-  baselines for age-specific mortality forecasting on Human Mortality Database data. Rebuilding
-  the full pipeline from the paper's published description --- identical Transformer
-  hyperparameters, the same 1950--2000/2001--2019 split, ages 0--100, 10 independent runs per
-  model --- and applying it to male mortality in six of the paper's eight countries, we are unable
-  to reproduce the headline result. Under a recursive multi-step test protocol that gives all
-  models the same information set, Lee-Carter achieves the lowest test RMSE in all six countries,
-  and the Transformer never ranks better than second among the four neural networks. A protocol
-  sensitivity analysis shows the conclusion is not an artefact of our forecasting scheme: feeding
-  observed test-year data into the input windows leaves the neural models' errors essentially
-  unchanged, while the same information reduces Lee-Carter's RMSE by 14--53%. Neither the paper's
-  reported near-2x in-sample advantage for the Transformer nor its faster loss convergence
-  appears in our runs. We attribute the neural models' failure to a structural inability to
-  extrapolate beyond the training distribution on a strongly trended series, and we document the
-  unstated implementation choices --- forecast protocol, population, window length, optimizer,
-  scaling --- that a full reproduction of the original numbers would require.
+  @wang2024transformer report that a compact encoder--decoder Transformer forecasts age-specific
+  mortality more accurately than the Lee--Carter model and than recurrent and convolutional network
+  baselines across eight Human Mortality Database populations. Because that conclusion, if robust,
+  would recommend a substantial change in actuarial practice, we rebuild the entire experiment from
+  the paper's published description and test whether the result survives reimplementation. Using the
+  authors' own Transformer configuration, the same 1950--2000 training and 2001--2019 test split,
+  ages 0--100, and ten independently seeded runs per model, we evaluate the five models on male
+  mortality for six of the eight countries in the original study. The headline result does not
+  reproduce. When every model forecasts the test decades from training-period information alone,
+  Lee--Carter attains the lowest test error in all six countries and the Transformer never ranks
+  first among the four networks. To rule out our forecasting scheme as the cause, we re-evaluate
+  under a rolling protocol that feeds observed test data into the network inputs; this leaves the
+  networks essentially unchanged while improving Lee--Carter by 14 to 46 per cent, so the classical
+  model wins under either reading. We trace the networks' failure to a structural inability to
+  extrapolate beyond the range of the training data on a strongly trended series, and we set out the
+  unstated design choices that a faithful reproduction of the original figures would require.
 
 bibliography: references.bib
 
@@ -36,12 +36,15 @@ format:
     fontsize: 11pt
     linestretch: 1.15
     mainfont: "New Computer Modern"
-    section-numbering: 1.1.a
+    section-numbering: "1.1.1"
     toc: true
+    toc-title: "Contents"
     toc-depth: 3
   html:
     toc: true
-    toc-float: true
+    toc-title: "Contents"
+    toc-depth: 3
+    toc-location: left
     theme: cosmo
     smooth-scroll: true
     embed-resources: true
@@ -49,6 +52,7 @@ format:
 crossref:
   fig-title: Figure
   tbl-title: Table
+  eq-prefix: Eq.
   fig-prefix: Figure
   tbl-prefix: Table
 
@@ -57,71 +61,137 @@ cap-location: bottom
 
 # Introduction
 
-@wang2024transformer proposed applying the Transformer architecture [@vaswani2017attention] to age-specific mortality forecasting and reported that it outperformed the Lee-Carter model [@lee1992modeling] and three neural network baselines (RNN, LSTM, CNN) across eight countries drawn from the Human Mortality Database [@hmd]. Because the paper reports strong headline results but leaves several implementation details unspecified, an independent replication is a natural test of how robust its conclusions are to reimplementation from the published description alone.
+Forecasting how mortality rates will evolve is a foundational problem in actuarial science: the price of an annuity, the reserve behind a pension promise, and the solvency capital an insurer must hold all depend on a projection of future death rates. For three decades the reference model has been the factor decomposition of @lee1992modeling, which represents the logarithm of the age-specific death rate as a single time-varying index modulated by an age-specific sensitivity, and projects the index forward as a random walk with drift. Its appeal is its parsimony: a handful of parameters per age, a transparent estimation procedure, and a projection whose behaviour an actuary can reason about.
 
-This report documents such a replication. We reimplement the full experimental pipeline --- data preparation, the Transformer exactly as specified in the paper's hyperparameter table, the three deep learning baselines, the Lee-Carter benchmark, the training protocol, and the evaluation metrics --- and run it on the subset of the paper's countries available in our local HMD extract. All results, tables, and figures in this report are produced by our own code from raw HMD data; nothing is reproduced from the original publication.
+The recent success of deep learning on sequence data has prompted a series of attempts to replace or augment this classical machinery with neural networks [@perla2021timeseries; @nigri2019deep]. The most striking such claim is that of @wang2024transformer, who apply the Transformer architecture of @vaswani2017attention to mortality forecasting and report that it outperforms Lee--Carter and three neural baselines—a recurrent network, a long short-term memory network, and a convolutional network—across all eight countries they examine, on both the training and the test period. If this result is robust, it is consequential: it would suggest that a general-purpose attention model, with no demographic structure built in, is the better default for an actuarial forecasting task where the classical model has held for thirty years.
 
-Two questions guide the exercise:
+A claim of that weight invites independent verification. The original paper reports strong numbers but, like many applied deep-learning studies, leaves several parts of its pipeline unspecified—among them the length of the input window, the optimiser, the input scaling, the configuration of the baselines, and, most importantly, the scheme by which multi-year test forecasts are generated. These omissions matter, because in a forecasting exercise the information a model is permitted to see while predicting can move the results more than the architecture does. The purpose of this report is to determine whether the paper's conclusion can be recovered by an analyst working only from its published description.
 
-1. **Reproducibility of the ranking.** Does the Transformer beat LC, RNN, LSTM, and CNN on held-out test years when the experiment is rebuilt from the paper's description?
-2. **Sensitivity to unstated choices.** The paper omits the moving-window length, the optimizer, the input scaling, the forecasting protocol on the test set, and the baseline configurations. How much interpretive freedom do these gaps leave, and does the headline conclusion survive them?
+We reimplement the complete experiment: the data preparation, the Transformer exactly as specified in the paper's hyperparameter table, the three neural baselines, the Lee--Carter benchmark, the training regime, and the evaluation metrics. Every figure and table below is generated by our own code from raw Human Mortality Database records; nothing is taken from the original publication. Two questions organise the analysis. First, does the reported ranking survive reimplementation—does the Transformer beat Lee--Carter and the other networks out of sample? Second, how sensitive is the answer to the design choices the paper leaves open, and in particular to the test-time forecasting protocol?
 
 # Data
 
-## Source and scope
+We use single-age central death rates $m_{x,t}$ from the Human Mortality Database [@hmd] for ages $x = 0, \dots, 100$ ($A = 101$ age groups) and calendar years $t = 1950, \dots, 2019$, matching the window of the original study. The paper covers eight countries; our local extract contains six of them, and this determines the scope of the replication (@tbl-countries).
 
-We use single-age central death rates $m(x,t)$ from the Human Mortality Database, ages $0$--$100$ ($A = 101$ age groups) and calendar years 1950--2019, matching the paper's data window. The paper studies eight countries; our local extract covers six of them, which defines the replication scope:
+| Original study | HMD series used | Note |
+|:---------------|:----------------|:-----|
+| United Kingdom | GBRTENW | England and Wales, used as the UK proxy |
+| France | FRATNP | Total national population |
+| Italy | ITA | — |
+| Denmark | DNK | — |
+| Canada | CAN | — |
+| Finland | FIN | — |
 
-| Paper country | Our HMD series | Note |
-|:--------------|:---------------|:-----|
-| UK | GBRTENW | England & Wales population used as UK proxy |
-| France | FRATNP | Total-population series |
-| Italy | ITA | --- |
-| Denmark | DNK | --- |
-| Canada | CAN | --- |
-| Finland | FIN | --- |
+: Countries included in the replication. Spain and Japan are excluded for want of local data. {#tbl-countries}
 
-: Country coverage of the replication. Spain and Japan are omitted for lack of local data. {#tbl-countries}
+Two departures from the original are unavoidable, and we state them at the outset. Spain and Japan are absent from our extract and are dropped. The paper also does not report which population—male, female, or total—it models; we use male mortality throughout. Male rates are more volatile than total-population rates, especially at young adult ages, so our error levels are not directly comparable in magnitude with the paper's. The quantity that is comparable, and that carries the paper's argument, is the relative ordering of the five models, and that ordering is what we test.
 
-Two deviations from the source paper are unavoidable and are stated up front. First, Spain and Japan are excluded. Second, the paper does not state which population (male, female, or total) it models; we use **male** mortality throughout. Consequently our error levels are not directly comparable with the paper's numerically --- male mortality is more volatile than total-population mortality, particularly at young-adult ages --- but the *relative ranking* of the five models, which is the paper's central claim, is fully testable.
+All modelling is carried out on log-mortality, $y_{x,t} = \ln m_{x,t}$. A small number of zero cells, which occur at the highest ages in the smaller Danish and Finnish populations and which the database uses to denote absent exposure, are carried forward along the year axis before the logarithm is taken. Following the paper, we train on 1950--2000 (51 years) and reserve 2001--2019 (19 years) for testing.
 
-## Preprocessing and split
+# Methods
 
-All modelling is done on log-mortality $y_{x,t} = \ln m_{x,t}$. A small number of zero cells in the Danish and Finnish series (high ages, small exposure) are forward-filled along the year axis before the log transform. Following the paper, the training set covers 1950--2000 (51 years) and the test set covers 2001--2019 (19 years).
+## Notation and the forecasting task {#sec-notation}
 
-Model inputs are built with a moving window: a block of $s$ consecutive years of the full age profile, $(s, 101)$, predicts the next year's profile $(101,)$. The paper describes this construction but never states the window length; we set $s = 10$, giving $51 - 10 = 41$ training windows per country. Inputs are standardised per age group using means and standard deviations computed **on the training years only**, and predictions are mapped back to the log-mortality scale before any metric is computed.
+Write the log-mortality surface for one country as the matrix $Y = (y_{x,t})$ with $A = 101$ rows and 70 columns. Every model is trained to perform the same one-step map: given the age profiles of $s$ consecutive years, predict the age profile of the following year. Writing $\mathbf{y}_t = (y_{0,t}, \dots, y_{100,t})^\top \in \mathbb{R}^{A}$ for the profile in year $t$, the target is
 
-# Models
+$$
+\hat{\mathbf{y}}_{t} = g\left(\mathbf{y}_{t-s}, \mathbf{y}_{t-s+1}, \dots, \mathbf{y}_{t-1}\right),
+$$ {#eq-task}
 
-## Transformer
+where $g$ is the model. Sliding this window across the training years yields the training pairs. The paper describes this construction but does not give the window length; we set $s = 10$, which produces $51 - 10 = 41$ input–target pairs per country. Inputs are standardised age by age, using the mean and standard deviation of each age computed over the training years only, and predictions are returned to the log-mortality scale before any error is measured.
 
-The Transformer follows the paper's architecture and its published hyperparameter table exactly: a linear embedding of the 101-dimensional age profile into $d_{\text{model}} = 32$; standard sinusoidal positional encoding; one encoder layer and one decoder layer; two attention heads; a feed-forward hidden width of 16; dropout 0.1; and no causal masking in the decoder (the paper explicitly removes the mask). Two details are not specified and were resolved as follows: the decoder consumes the same embedded sequence as the encoder, and the prediction is read from the final sequence position through a linear head mapping $d_{\text{model}} \to 101$.
+## The Lee–Carter model {#sec-lc}
 
-## Baselines
+The classical benchmark decomposes log-mortality into an age profile, a single temporal index, and an age-specific sensitivity to that index:
 
-The paper names its baselines (RNN, LSTM, CNN) but gives none of their configurations. To keep parameter budgets comparable with the Transformer's, all recurrent baselines use a single layer of width 32 followed by a linear output head, and the CNN applies a one-dimensional convolution **along the time axis** with 32 filters of kernel size 3 --- the formulation described in the paper's background section, where each filter spans the full age vector --- followed by average pooling over time and a linear head.
+$$
+y_{x,t} = \alpha_x + \beta_x \,\kappa_t + \varepsilon_{x,t},
+\qquad \sum_x \beta_x = 1, \quad \sum_t \kappa_t = 0,
+$$ {#eq-lc}
 
-The classical benchmark is Lee-Carter estimated by singular value decomposition on the training matrix, with the period index $\kappa_t$ extrapolated 19 years by a random walk with drift. This fit is deterministic and therefore has no run-to-run variability.
+with the identifiability constraints on the right. We estimate @eq-lc as in the original formulation: $\alpha_x$ is the mean of $y_{x,\cdot}$ over the training years, and the first left and right singular vectors of the centred matrix $Y - \alpha$ supply $\beta_x$ and $\kappa_t$ after the constraints are imposed. The index is projected with a random walk with drift,
 
-## Training and forecasting protocol
+$$
+\kappa_{t+1} = \kappa_t + d + \xi_{t+1},
+\qquad d = \frac{\kappa_{T} - \kappa_{1}}{T - 1},
+$$ {#eq-rwd}
 
-Deep learning models are trained with mean squared error loss, learning rate $10^{-3}$, batch size 32, and 100 epochs, as stated in the paper; the optimizer (unstated) is Adam. Each model is trained in **10 independent runs** (seeds 0--9) per country, and all reported metrics are means over runs with standard deviations in parentheses --- mirroring the paper's treatment of training stochasticity.
+where $d$ is the average annual change over the training period and $\xi_t$ is a mean-zero innovation. A forecast $h$ years ahead sets the innovations to their expectation, so $\hat{\kappa}_{T+h} = \kappa_T + h\,d$, and the projected rates follow from @eq-lc. Because the estimation is deterministic, Lee--Carter produces a single forecast with no run-to-run variation.
 
-Test-set forecasts are generated **recursively**: the window is seeded with the last $s$ training years (1991--2000), the model predicts 2001, the prediction is appended to the window, and the process repeats through 2019. No observed test data ever enters an input window, so the deep learning models operate under the same information set as the 19-year Lee-Carter extrapolation. The paper does not state its test protocol explicitly, but its reported growth of forecast errors with horizon is consistent only with this recursive scheme.
+## Recurrent baselines {#sec-rnn}
 
-Training-set metrics use in-sample one-step predictions over the 41 training windows.
+The two recurrent baselines process the window one year at a time, maintaining a hidden state of width $H = 32$. The Elman network (RNN) updates
 
-## Evaluation
+$$
+\mathbf{h}_t = \tanh\left(W_x \mathbf{y}_t + W_h \mathbf{h}_{t-1} + \mathbf{b}\right),
+$$ {#eq-rnn}
 
-Following the paper, we report mean absolute error (MAE), root mean squared error (RMSE), and mean absolute percentage error (MAPE), all computed on the log-mortality scale, on both the training and test periods. We additionally compute the age-wise and year-wise decompositions of test RMSE introduced by @li2017coherent:
+and reads the prediction from the final state, $\hat{\mathbf{y}} = W_o \mathbf{h}_s + \mathbf{b}_o$. The long short-term memory network (LSTM) of @hochreiter1997long augments the recurrence with gates that regulate what the state retains and exposes:
 
-$$\text{RMSE}(a) = \sqrt{\tfrac{1}{T}\textstyle\sum_t (\hat{y}_{a,t} - y_{a,t})^2}, \qquad \text{RMSE}(t) = \sqrt{\tfrac{1}{A+1}\textstyle\sum_a (\hat{y}_{a,t} - y_{a,t})^2}.$$
+$$
+\begin{aligned}
+\mathbf{i}_t &= \sigma\left(W_i \mathbf{y}_t + U_i \mathbf{h}_{t-1} + \mathbf{b}_i\right), &
+\mathbf{f}_t &= \sigma\left(W_f \mathbf{y}_t + U_f \mathbf{h}_{t-1} + \mathbf{b}_f\right), \\
+\mathbf{o}_t &= \sigma\left(W_o \mathbf{y}_t + U_o \mathbf{h}_{t-1} + \mathbf{b}_o\right), &
+\mathbf{g}_t &= \tanh\left(W_g \mathbf{y}_t + U_g \mathbf{h}_{t-1} + \mathbf{b}_g\right), \\
+\mathbf{c}_t &= \mathbf{f}_t \odot \mathbf{c}_{t-1} + \mathbf{i}_t \odot \mathbf{g}_t, &
+\mathbf{h}_t &= \mathbf{o}_t \odot \tanh(\mathbf{c}_t),
+\end{aligned}
+$$ {#eq-lstm}
+
+with $\sigma$ the logistic function and $\odot$ the elementwise product. The input, forget, and output gates $\mathbf{i}_t, \mathbf{f}_t, \mathbf{o}_t$ control the flow into and out of the cell state $\mathbf{c}_t$, which is what lets the LSTM carry information across many steps without the gradient decay that limits the plain RNN. As with the RNN, a linear head maps the final hidden state to the predicted profile.
+
+## Convolutional baseline {#sec-cnn}
+
+The convolutional baseline (CNN) follows the construction described in the original paper, in which each filter spans the full age vector and slides along time. Treating the window as a signal with $A$ channels and length $s$, a bank of $K = 32$ filters of temporal width three produces
+
+$$
+u_{k,j} = \text{ReLU}\left(b_k + \sum_{a=0}^{A-1}\sum_{r=0}^{2} W_{k,a,r}\, y_{a,\,t-s+j+r}\right),
+$$ {#eq-cnn}
+
+for filter $k$ and output position $j$. The feature maps are averaged over time and passed through a linear head to the predicted age profile. Convolving along time in this way lets each filter detect a local temporal pattern in the joint movement of all ages at once.
+
+## The Transformer {#sec-transformer}
+
+The Transformer is reproduced exactly as specified in the paper's hyperparameter table: one encoder layer, one decoder layer, two attention heads, embedding dimension $d = 32$, feed-forward width 16, dropout 0.1, and no causal mask in the decoder. Each age profile in the window is first embedded linearly into $\mathbb{R}^{d}$ and given a position through the sinusoidal encoding of @vaswani2017attention,
+
+$$
+\text{PE}_{t,2i} = \sin\left(\frac{t}{10000^{\,2i/d}}\right),
+\qquad
+\text{PE}_{t,2i+1} = \cos\left(\frac{t}{10000^{\,2i/d}}\right),
+$$ {#eq-pe}
+
+so that the model, which has no inherent notion of order, can tell the ten years of the window apart. The heart of the architecture is scaled dot-product attention, which lets every position attend to every other:
+
+$$
+\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^\top}{\sqrt{d_k}}\right) V .
+$$ {#eq-attn}
+
+The queries, keys, and values $Q, K, V$ are linear projections of the embedded sequence; the softmax over $QK^\top$ produces, for each position, a set of weights over all positions, and the output is the correspondingly weighted average of the values. Two such attention functions run in parallel as heads and are concatenated. Each encoder and decoder layer wraps the attention and a two-layer feed-forward network in residual connections with layer normalisation. Following the paper, the decoder attends over the same embedded sequence as the encoder with no masking, and the prediction is read from the final sequence position through a linear map back to $\mathbb{R}^{A}$.
+
+## Estimation and forecasting {#sec-protocol-methods}
+
+The networks are trained by minimising the mean squared error between predicted and observed standardised profiles, using the Adam optimiser at learning rate $10^{-3}$, batch size 32, and 100 epochs, as the paper states (the optimiser itself is our choice, since the paper does not name one). Neural training is stochastic in its initialisation and mini-batch order, so we repeat each fit ten times with seeds $0, \dots, 9$ and report the mean and, in parentheses, the standard deviation across runs. Lee--Carter, being deterministic, is fitted once.
+
+Generating the 19-year test forecast requires a scheme for turning a one-step model into a multi-year projection, and here the paper is silent. Our primary protocol is recursive: the input window is seeded with the last ten training years, the model predicts 2001, that prediction is appended to the window, and the process repeats through 2019. Under this scheme no observed test value ever enters a network input, so the networks and Lee--Carter forecast from the same information—the training period alone. This is the fair comparison, and the horizon-dependent growth of the errors the paper reports is consistent with it. @sec-protocol examines the alternative.
+
+## Evaluation {#sec-eval}
+
+We report mean absolute error, root mean squared error, and mean absolute percentage error, all computed on the log-mortality scale as in the paper, over both the training and test periods. To locate the errors in age and in time we also compute the two decompositions of @li2017coherent,
+
+$$
+\text{RMSE}(x) = \sqrt{\frac{1}{T}\sum_{t} \left(\hat{y}_{x,t} - y_{x,t}\right)^2},
+\qquad
+\text{RMSE}(t) = \sqrt{\frac{1}{A}\sum_{x} \left(\hat{y}_{x,t} - y_{x,t}\right)^2},
+$$ {#eq-rmse-decomp}
+
+the first averaging over the 19 test years at each age and the second over the 101 ages in each year.
 
 # Results
 
-## Training-set performance {#sec-train}
+## In-sample fit {#sec-train}
 
-@tbl-train reports in-sample RMSE for the four neural networks, averaged over the 10 runs (standard deviations in parentheses). The four architectures are nearly indistinguishable: within each country, the spread between the best and worst network is 2--8% of the error level, and the best in-sample model differs from country to country (LSTM in the UK and Italy, CNN in France and Canada, RNN in Finland, the Transformer in Denmark). Run-to-run standard deviations are an order of magnitude smaller than the differences between countries.
+We begin where the paper's advantage is reported to be largest: the training set. @tbl-train gives the in-sample RMSE of the four networks, averaged over ten runs. The four architectures are close to indistinguishable. Within a country the gap between the best and worst network is between three and eight per cent of the error level, the run-to-run standard deviations are an order of magnitude smaller than the differences between countries, and no single architecture is reliably ahead: the LSTM fits best in the United Kingdom and Italy, the CNN in France and Canada, the RNN in Finland, and the Transformer in Denmark.
 
 | Country | RNN | LSTM | CNN | Transformer |
 |:--------|:----|:-----|:----|:------------|
@@ -132,15 +202,15 @@ $$\text{RMSE}(a) = \sqrt{\tfrac{1}{T}\textstyle\sum_t (\hat{y}_{a,t} - y_{a,t})^
 | Canada | 0.0706 (0.0012) | 0.0697 (0.0009) | **0.0674** (0.0006) | 0.0705 (0.0008) |
 | Finland | **0.1394** (0.0014) | 0.1433 (0.0011) | 0.1435 (0.0011) | 0.1418 (0.0024) |
 
-: In-sample (training-set) RMSE on log-mortality, mean over 10 runs with standard deviation in parentheses. Bold marks the best model per country. {#tbl-train}
+: In-sample RMSE on log-mortality, mean over ten runs with standard deviation in parentheses. Bold marks the best network in each country. {#tbl-train}
 
-This is the first point of divergence from the source paper, which reports the Transformer roughly halving the training-set errors of the other networks in every country. In our runs no such in-sample gap exists. @fig-loss shows why: all four training-loss curves descend smoothly to a similar plateau, and the Transformer's curve is, if anything, marginally the slowest to converge --- we find no trace of the dramatic convergence advantage the original study attributes to parallel attention.
+This is the first divergence from the original study, which reports the Transformer roughly halving the training errors of the other networks in every country. We find no such gap. @fig-loss shows why: the four training-loss curves descend smoothly to a common plateau, and the Transformer's curve is, if anything, marginally the slowest to settle. The dramatic convergence advantage the paper attributes to parallel attention does not appear in our runs.
 
-![Training MSE over 100 epochs, averaged over 10 runs per model. Log scale.](outputs/figures/loss_curves.png){#fig-loss fig-align="center" width=95%}
+![Training mean squared error over 100 epochs, averaged across ten runs per model, on a logarithmic scale.](outputs/figures/loss_curves.png){#fig-loss fig-align="center" width=95%}
 
-## Test-set performance {#sec-test}
+## Out-of-sample accuracy {#sec-test}
 
-@tbl-test presents the central replication result: test RMSE over 2001--2019 under the recursive protocol, in which every model --- neural and classical alike --- forecasts 19 years ahead without access to any observed test data.
+The test period is where the paper's claim must ultimately be judged. @tbl-test reports test RMSE over 2001--2019 under the recursive protocol, in which every model projects nineteen years ahead from training-period information alone.
 
 | Country | LC | RNN | LSTM | CNN | Transformer |
 |:--------|:---|:----|:-----|:----|:------------|
@@ -151,33 +221,31 @@ This is the first point of divergence from the source paper, which reports the T
 | Canada | **0.2129** | 0.3152 (0.0087) | 0.2943 (0.0074) | 0.4549 (0.0778) | 0.3119 (0.0077) |
 | Finland | **0.3290** | 0.4455 (0.0050) | 0.4318 (0.0043) | 0.3453 (0.0308) | 0.4511 (0.0090) |
 
-: Test-set RMSE on log-mortality (recursive multi-step forecast, 2001--2019), mean over 10 runs with standard deviation in parentheses; Lee-Carter is deterministic. Bold marks the best model per country. {#tbl-test}
+: Test RMSE on log-mortality under the recursive protocol, mean over ten runs with standard deviation in parentheses. Lee--Carter is deterministic. Bold marks the best model in each country. {#tbl-test}
 
-Three findings stand out.
+Lee--Carter records the lowest test RMSE in all six countries. The margin is narrow in Denmark and Finland, where the nearest network comes within about 0.02, and wide in Canada, France, the United Kingdom, and Italy, where the best network trails by 38 to 45 per cent. The mean absolute error and percentage error broadly agree; the only reversals are at the very top and do not touch the Transformer, which leads on no metric in any country. The mean absolute error places the LSTM marginally ahead of Lee--Carter in Denmark (0.360 against 0.371) and the CNN marginally ahead in Finland (0.225 against 0.227), and on the log-scale percentage error the CNN leads in the United Kingdom and Finland and the LSTM in Denmark. None of these disturbs the picture. This is the reverse of the original study, in which the Transformer beat Lee--Carter and every baseline everywhere.
 
-**Lee-Carter wins everywhere.** LC records the lowest test RMSE in all six countries, by margins ranging from 5% (Denmark, where LSTM comes close at 0.495 vs. 0.473) to 43--49% (UK, Italy, France relative to the best network). MAE and MAPE produce identical rankings (full per-run tables accompany the code). This is the opposite of the source paper's Table-3 pattern, in which the Transformer beat LC in every country.
+Within the network family the Transformer is not the leader either. The LSTM is the best network in four of the six countries and the CNN, where it remains stable, in the other two; the Transformer's strongest showings are second places in Canada, behind the LSTM, and in Italy, ahead of the RNN by less than a thousandth. The spread among the RNN, LSTM, and Transformer is small, typically 0.01 to 0.03 in RMSE, and it is dwarfed by the gap that separates all of them from Lee--Carter.
 
-**The Transformer does not lead the neural family.** Within the four networks, LSTM is best in four countries, the CNN (when stable) in two, and the Transformer in none --- its best showing is second place in Canada (0.3119, behind LSTM's 0.2943), and it ranks third or fourth elsewhere. The differences among RNN, LSTM, and Transformer are small (typically 0.01--0.03 RMSE) next to the gap separating all of them from LC.
+The CNN behaves differently from the others and deserves a separate remark. Under recursive feedback its forecasts diverge in France, Italy, Denmark, and Canada, reaching RMSE between 0.45 and 1.28 with run-to-run standard deviations as large as 0.26, as errant predictions at the youngest ages are fed back and amplified. In the two countries where the recursion happens to stay bounded it is the best network. A model whose accuracy swings this widely with the random seed is not usable in practice without additional safeguards, and we read its occasional wins as a symptom of that instability rather than as evidence of skill.
 
-**The CNN is unstable under recursion.** In France, Italy, Denmark, and Canada, the CNN's recursive forecasts diverge (RMSE 0.45--1.28 with run-to-run standard deviations up to 0.26), driven by runaway extrapolation at child and young-adult ages where log-mortality is lowest. In the UK and Finland, where its recursion happens to remain stable, it is the best network --- a dispersion that makes it unusable in practice without safeguards.
+## Error by age and horizon {#sec-structure}
 
-## Error structure by age and horizon {#sec-structure}
+![Test RMSE by age, averaged over ten runs. The networks' errors concentrate at ages 60 to 90; the CNN diverges at the youngest ages in France, Italy, and Denmark.](outputs/figures/rmse_by_age.png){#fig-rmsea fig-align="center" width=95%}
 
-![Test RMSE by age, RMSE(a), averaged over 10 runs. The neural models' errors concentrate at ages 60--90; the CNN diverges at ages 0--20 in France, Italy, and Denmark.](outputs/figures/rmse_by_age.png){#fig-rmsea fig-align="center" width=95%}
+![Test RMSE by calendar year, averaged over ten runs. All errors grow with the forecast horizon, and Lee--Carter's grows the most slowly.](outputs/figures/rmse_by_year.png){#fig-rmset fig-align="center" width=95%}
 
-![Test RMSE by calendar year, RMSE(t), averaged over 10 runs. All models' errors grow with horizon; Lee-Carter grows slowest.](outputs/figures/rmse_by_year.png){#fig-rmset fig-align="center" width=95%}
+Decomposing the error by age (@fig-rmsea) locates the networks' disadvantage in the old-age band, ages 60 to 90. This is the same region the original study singles out as the Transformer's strong suit; in our runs it is where the networks fall furthest behind Lee--Carter. The year-wise decomposition (@fig-rmset) shows every recursive forecast deteriorating as the horizon lengthens, which is unavoidable, but Lee--Carter's error grows the most gently and the networks separate from it within a few years of the forecast origin. Averaging either decomposition, the analogue of the paper's summary table, again places Lee--Carter first on both indicators in all six countries.
 
-@fig-rmsea decomposes test error by age. The neural networks' disadvantage is concentrated at ages 60--90 --- precisely the high-age band in which the source paper claims the Transformer's advantage is largest. In the UK panel, for example, the RNN/LSTM/Transformer error hump at ages 65--85 reaches roughly 0.45--0.50 while LC stays near 0.30; the same hump appears in every country. @fig-rmset decomposes error by calendar year: all recursive forecasts deteriorate with horizon, as they must, but LC's error curve grows most slowly and the networks' curves separate from it almost immediately --- by 2005 in most countries. The averages of both decompositions (the analogue of the source paper's summary table) confirm LC as the lowest-error model on both indicators in all six countries.
+The clearest single picture is the predicted age profile for 2019, the last and most demanding test year (@fig-2019). The RNN, LSTM, and Transformer profiles lie almost on top of one another and sit visibly above the observed curve through midlife and old age: after nineteen recursive steps the networks have not carried the mortality decline far enough and have drifted back toward training-period levels. Lee--Carter, extrapolating its drift in a straight line, stays close to the observed profile. The CNN's collapse at young ages is the deep trough in the French, Italian, and Danish panels.
 
-@fig-2019 shows the age profile of predicted log-mortality in 2019, the final and hardest test year. The RNN, LSTM, and Transformer profiles lie almost on top of one another and sit visibly *above* the observed curve through midlife and old age: after 19 recursive steps the networks have under-extrapolated the mortality decline, reverting toward training-period levels. LC, extrapolating its drift linearly, tracks the observed profile far more closely. The CNN's young-age divergence is visible as the deep trough in the France, Italy, and Denmark panels.
+![Observed and predicted log-mortality age profiles in 2019 under the recursive protocol, averaged over ten runs.](outputs/figures/prediction_2019.png){#fig-2019 fig-align="center" width=95%}
 
-![Observed versus predicted log-mortality age profiles in 2019 (recursive forecasts, mean over 10 runs).](outputs/figures/prediction_2019.png){#fig-2019 fig-align="center" width=95%}
+## Sensitivity to the forecasting protocol {#sec-protocol}
 
-## Protocol sensitivity {#sec-protocol}
+Because the paper does not state how its multi-year forecasts are formed, a natural worry is that our recursive scheme, rather than the architectures, drives the result. We therefore repeated the entire evaluation under the opposite reading: a rolling one-step scheme in which each test year is predicted from the ten observed years before it, so that realised test data enters the network inputs as it becomes available, and Lee--Carter is refitted each year on all data to date. @tbl-protocol compares the two protocols for Lee--Carter and the Transformer; the other networks track the Transformer.
 
-Because the source paper does not state how its test forecasts are generated, we repeated the entire evaluation under the alternative reading: a rolling one-step-ahead scheme in which each test year is predicted from the *observed* previous ten years, so that realised test data enters the input windows. @tbl-protocol compares both protocols for LC and the Transformer (the other networks behave like the Transformer).
-
-| Country | LC recursive | LC rolling | Transformer recursive | Transformer rolling |
+| Country | LC, recursive | LC, rolling | Transformer, recursive | Transformer, rolling |
 |:--------|-------------:|-----------:|----------------------:|--------------------:|
 | UK | 0.2016 | **0.1244** | 0.3450 | 0.3447 |
 | France | 0.2656 | **0.1441** | 0.3932 | 0.3887 |
@@ -186,37 +254,37 @@ Because the source paper does not state how its test forecasts are generated, we
 | Canada | 0.2129 | **0.1451** | 0.3119 | 0.3119 |
 | Finland | 0.3290 | **0.2826** | 0.4511 | 0.4457 |
 
-: Test RMSE under the two candidate forecast protocols. Rolling = observed data from the preceding ten years enters each input window (LC is refit annually on all data to date). {#tbl-protocol}
+: Test RMSE under the two forecasting protocols. Under the rolling protocol the observed profiles of the preceding ten years enter each input window, and Lee--Carter is refitted annually. {#tbl-protocol}
 
-The asymmetry is striking. Handing the Transformer observed test-year inputs changes its RMSE by less than 0.01 in five of six countries --- and makes it *worse* in Denmark --- while the same information reduces LC's RMSE by 14% (Finland) to 53% (France). The networks' test error is therefore not accumulated window drift that fresh data could correct; it is bias in the learned one-step mapping itself, which persists no matter how accurate the inputs are. The practical consequence is that the replication's verdict does not depend on which protocol the original authors intended: under the information-fair recursive reading LC wins all six countries, and under the rolling reading LC wins all six countries by a wider margin.
+The two protocols affect the models very differently. Handing the Transformer observed test data changes its RMSE by less than 0.01 in five of the six countries, and in Denmark it makes matters slightly worse; the same information lowers Lee--Carter's RMSE by between 14 per cent in Finland and 46 per cent in France. A network whose error is unmoved by feeding it the correct recent history is not suffering from stale inputs. Its error lives in the learned one-step map itself, which is biased in a way that accurate inputs cannot repair. The practical implication is that the verdict does not depend on which protocol the original authors had in mind: under the information-fair recursive reading Lee--Carter wins in all six countries, and under the rolling reading it wins by a wider margin still.
 
 # Discussion
 
-## Why the neural models fail here
+## Why the networks fall short here {#sec-why}
 
-The mechanism visible in @fig-2019 explains the entire pattern. Post-war log-mortality declines almost linearly, so by 2001--2019 the standardised inputs at most ages lie *below* the range the networks saw during 1950--2000 training. A neural network trained by empirical risk minimisation interpolates within its training distribution; asked to extrapolate outside it, its output regresses toward training-period targets, producing forecasts that are systematically too pessimistic (mortality too high) and increasingly so with horizon. Lee-Carter, by contrast, is built around exactly the right inductive bias for this data: a linear drift in a single index, extrapolated indefinitely. The protocol sensitivity analysis (@tbl-protocol) confirms the diagnosis --- the networks' bias lives in the learned mapping, not in the inputs, so observed data cannot repair it.
+The mechanism is visible in the 2019 profiles of @fig-2019. Post-war log-mortality falls almost linearly, so by the end of the test period the standardised inputs at most ages lie below anything the networks encountered in 1950--2000. A network trained by empirical risk minimisation interpolates comfortably within the range of its training data but has no reason to continue a trend beyond it; asked to do so, its output relaxes toward the levels it was trained on, producing forecasts that are too pessimistic about mortality and increasingly so as the horizon lengthens. Lee--Carter carries precisely the inductive bias this data rewards—a single index moving with constant drift, extrapolated without apology. The protocol experiment of @sec-protocol confirms the diagnosis from a second angle: the bias sits in the mapping, not in the inputs, which is why observed data does not remove it.
 
-This finding echoes our earlier study of five LSTM variants on Australian male data (train 1950--2004, test 2010--2019), in which every deep learning model likewise trailed both rolling and multi-step Lee-Carter, with the same signature of systematic trend misextrapolation. Two independent pipelines, different countries, different architectures, same conclusion: with roughly fifty years of annual data and a strongly trended target, small parametric factor models beat flexible sequence models out of sample.
+The same pattern emerged in an earlier strand of this project, in which five LSTM variants were compared with Lee--Carter on Australian male data over a different test window; there too every network trailed both the rolling and the multi-step classical model, with the same signature of a trend carried too far. Two independent pipelines, on different populations and architectures, reach the same conclusion. With roughly fifty years of annual data and a strongly trended target, a parsimonious factor model extrapolates better than a flexible sequence model.
 
-## Reconciling with the source paper
+## Reconciling with the original study {#sec-reconcile}
 
-Our results contradict the source paper on three specific claims: the test-set ranking (their Transformer beat LC in all eight countries), the near-2x in-sample advantage, and the faster convergence. Since our LC errors land in the same range as theirs (UK 0.202 vs. their 0.163; Denmark 0.473 vs. 0.409; Finland 0.329 vs. 0.268 --- our male-only series being noisier than a total-population series accounts for gaps of this size), while our neural test errors are 3--4 times theirs (UK Transformer 0.345 vs. their 0.103) under *both* candidate protocols, the discrepancy cannot be explained by population choice or country subset alone. Some element of the original evaluation pipeline must differ from anything constructible from the paper's text --- candidates include a different forecast protocol, a different window construction, data scaling that leaks test-period information, or evaluation on periods overlapping the training data. We cannot distinguish among these from the outside; that is precisely the reproducibility problem.
+Our findings contradict the original on three specific points: the test ranking, on which the paper reports the Transformer beating Lee--Carter everywhere; the in-sample gap, which the paper puts at nearly a factor of two; and the convergence speed. The discrepancy cannot be explained by the population or the country subset alone. Our Lee--Carter errors sit in the same range as the paper's, once the extra volatility of a male-only series is allowed for—0.202 against their 0.163 in the United Kingdom, 0.473 against 0.409 in Denmark, 0.329 against 0.268 in Finland—yet our network test errors are three to four times theirs under both protocols; the paper's UK Transformer RMSE of 0.103 is less than a third of ours. A gap of that size in the networks but not in Lee--Carter points to something in the original evaluation of the networks that cannot be reconstructed from the text. Plausible candidates are a different forecasting protocol, a different window construction, a scaling that allows test-period information to leak into training, or evaluation over a span that overlaps the training years. We cannot choose among these from the outside, which is itself the reproducibility problem in miniature.
 
-We note two internal inconsistencies in the original paper that complicate comparison. Its test-set table reports an Italy Transformer MAE of 0.8585 alongside an RMSE of 0.1285, which is arithmetically impossible (MAE cannot exceed RMSE) and is presumably a typographical error. And its Finland training-set panel reports an LSTM RMSE (0.0273) far below its own MAE (0.1618), impossible for the same reason. Neither typo affects the paper's conclusions, but both indicate that its tables should be read with some care.
+Two internal inconsistencies in the original tables reinforce the case for caution. The reported Italian Transformer test figures pair a mean absolute error of 0.8585 with a root mean squared error of 0.1285, which is impossible because the mean absolute error can never exceed the root mean squared error; the Finnish LSTM training row pairs an RMSE of 0.0273 with an MAE of 0.1618, impossible for the same reason. Both are presumably typographical, and neither changes the paper's conclusions, but together they suggest the published numbers should be read with some care.
 
-## Limitations of this replication
+## Limitations {#sec-limits}
 
-Our design departs from the original in ways we could not avoid, and these bound the strength of the claims above. We model male rather than (presumably) total-population mortality; total rates are smoother, and the neural models would plausibly do somewhat better on them --- though the protocol-sensitivity evidence makes it unlikely that this alone reverses a 3--4x error gap. We cover six of eight countries, using England & Wales as the UK proxy. The window length ($s=10$), optimizer (Adam), and per-age standardisation are our choices where the paper is silent; we did not sweep them, although the in-sample near-parity across four very different architectures suggests the test-set conclusions are not delicate to them. Finally, our baselines use one plausible configuration each rather than a tuned one --- consistent with the paper, which reports tuning only the Transformer's learning rate, batch size, and dropout on training loss.
+Our design departs from the original in ways that bound the strength of these conclusions. We model male rather than, presumably, total-population mortality; total rates are smoother, and the networks would likely fare somewhat better on them, though the protocol evidence makes it doubtful that this alone would overturn a three-to-four-fold error gap. We cover six of the eight countries and use England and Wales for the United Kingdom. The window length, the optimiser, and the per-age standardisation are our choices where the paper is silent, and we did not sweep them; the near-parity of four very different architectures on the training set suggests the out-of-sample conclusions are not delicate to these settings, but we cannot rule out that some combination we did not try would help the networks. Finally, each baseline uses a single sensible configuration rather than a tuned one, consistent with the paper, which reports tuning only the Transformer.
 
 # Conclusion
 
-Rebuilding the experiment of @wang2024transformer from its published description, we could not reproduce its headline finding. On six countries, ages 0--100, with the paper's own Transformer hyperparameters, split, loss, and run-averaging protocol, Lee-Carter delivers the lowest test error in every country under both defensible readings of the unstated forecast protocol, and the Transformer never leads the neural family it was reported to dominate. The networks' failure mode is structural --- regression toward the training distribution on a trended series --- rather than a matter of tuning, and it reproduces across two independent pipelines in our broader project.
+Rebuilt from its published description, the central result of @wang2024transformer does not reproduce. Across six countries, ages 0 to 100, with the authors' own Transformer configuration, data split, loss, and ten-run protocol, Lee--Carter attains the lowest test error in every country under both defensible readings of the unstated forecasting scheme, and the Transformer never leads even the network family it was said to dominate. The failure is structural rather than a matter of tuning—the networks regress toward the training distribution on a trended series—and it recurs across two independent pipelines in this project.
 
-The constructive lesson is about reporting, not architecture. The original study leaves unstated the forecast protocol, the population, the window length, the optimizer, the scaling, and the baseline configurations; our replication shows that the reported conclusions cannot be recovered from what is stated. For forecasting papers in actuarial science, the test-time information set --- what the model is allowed to observe while predicting --- is the single most consequential design choice, and it deserves the same prominence as the architecture. Deep sequence models may yet earn a place in mortality forecasting, most plausibly in hybrid forms that inherit a trend-extrapolating backbone (as in Lee-Carter-integrated networks, e.g. @nigri2019deep); but demonstrating that requires evaluations whose information sets are explicit, fair, and reproducible.
+The constructive lesson concerns reporting more than architecture. The original leaves unstated the forecasting protocol, the population, the window length, the optimiser, the scaling, and the baseline configurations, and we have shown that its conclusions cannot be recovered from what it does state. In a forecasting study the test-time information set—what the model may observe while it predicts—is the single most consequential design decision, and it deserves the same prominence as the network diagram. Deep sequence models may yet find a place in mortality forecasting, most plausibly in hybrid forms that inherit a trend-extrapolating backbone from the classical model [@nigri2019deep]; but establishing that will require evaluations whose information sets are explicit, fair, and reproducible.
 
-# Reproducibility statement {.unnumbered}
+# Reproducibility {.unnumbered}
 
-All code, seeds (0--9), configuration, per-run metrics, and figures for this report are in the `Transformer/` directory of the project repository: `run_replication.py` (pipeline), `src/` (data, models, training, evaluation, plotting), `outputs/results/` (CSV tables including per-run values), and `outputs/figures/`. The experiment is deterministic per seed on CPU; rerunning `python run_replication.py --epochs 100 --runs 10` reproduces every number in this report. HMD data are subject to the HMD user agreement and are not redistributed.
+Every number in this report is produced by our own code from raw HMD records and regenerates exactly from a fixed seed. The pipeline is in `run_replication.py`; the data preparation, models, training loop, evaluation, and plotting are in `src/`; per-run and aggregated metrics are in `outputs/results/`, and the figures in `outputs/figures/`. Running `python run_replication.py --epochs 100 --runs 10` reproduces the tables and figures above. The HMD data are governed by the database's user agreement and are not redistributed here.
 
 # References {.unnumbered}
 
