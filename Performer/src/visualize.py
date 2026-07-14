@@ -1,9 +1,9 @@
 """
-Figures for the replication report.
+Figures for the Performer study.
 
 Design rules: Okabe-Ito colour-blind-safe palette with a FIXED model->colour
-mapping reused in every figure; one shared legend per figure; recessive grid;
-2px data lines; single y-axis per panel.
+mapping reused in every figure; one shared single-row legend per figure;
+recessive grid; single y-axis per panel; integer axis ticks.
 """
 
 import os
@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 FIG_DIR = os.path.join(os.path.dirname(__file__), "..", "outputs", "figures")
 
@@ -18,13 +19,12 @@ FIG_DIR = os.path.join(os.path.dirname(__file__), "..", "outputs", "figures")
 COLORS = {
     "Observed":    "#000000",
     "LC":          "#E69F00",
-    "RNN":         "#56B4E9",
     "LSTM":        "#009E73",
-    "CNN":         "#0072B2",
     "Transformer": "#D55E00",
+    "Performer":   "#CC79A7",
 }
-MODEL_ORDER = ["LC", "RNN", "LSTM", "CNN", "Transformer"]
-DL_ORDER    = ["RNN", "LSTM", "CNN", "Transformer"]
+MODEL_ORDER = ["LC", "LSTM", "Transformer", "Performer"]
+DL_ORDER    = ["LSTM", "Transformer", "Performer"]
 
 plt.rcParams.update({
     "font.size": 10, "axes.titlesize": 11, "axes.labelsize": 10,
@@ -42,7 +42,12 @@ def _grid(n_panels, ncols=3, panel=(4.0, 3.0)):
     return fig, np.atleast_1d(axes).ravel()
 
 
-def _save(fig, fname):
+def _finish(fig, axes, n_used, fname):
+    for ax in axes[n_used:]:
+        ax.axis("off")
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", ncol=len(labels),
+               frameon=False, bbox_to_anchor=(0.5, 1.05))
     os.makedirs(FIG_DIR, exist_ok=True)
     path = os.path.join(FIG_DIR, fname)
     fig.savefig(path, bbox_inches="tight")
@@ -61,12 +66,7 @@ def plot_loss_curves(curves_by_country: dict, fname: str):
         ax.set_title(c)
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Training MSE")
-    for ax in axes[len(countries):]:
-        ax.axis("off")
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=len(labels), frameon=False,
-               bbox_to_anchor=(0.5, 1.06))
-    _save(fig, fname)
+    _finish(fig, axes, len(countries), fname)
 
 
 def plot_final_year(preds_by_country: dict, true_by_country: dict,
@@ -83,18 +83,12 @@ def plot_final_year(preds_by_country: dict, true_by_country: dict,
         ax.set_title(c)
         ax.set_xlabel("Age")
         ax.set_ylabel(f"log m(x, {year})")
-    for ax in axes[len(countries):]:
-        ax.axis("off")
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=len(labels), frameon=False,
-               bbox_to_anchor=(0.5, 1.05))
-    _save(fig, fname)
+    _finish(fig, axes, len(countries), fname)
 
 
 def plot_rmse_profile(profiles_by_country: dict, x: np.ndarray,
                       xlabel: str, ylabel: str, fname: str):
     """Generic per-age / per-year RMSE small-multiples."""
-    from matplotlib.ticker import MaxNLocator
     countries = list(profiles_by_country)
     fig, axes = _grid(len(countries))
     for ax, c in zip(axes, countries):
@@ -105,9 +99,4 @@ def plot_rmse_profile(profiles_by_country: dict, x: np.ndarray,
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.xaxis.set_major_locator(MaxNLocator(integer=True, nbins=6))
-    for ax in axes[len(countries):]:
-        ax.axis("off")
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=len(labels), frameon=False,
-               bbox_to_anchor=(0.5, 1.05))
-    _save(fig, fname)
+    _finish(fig, axes, len(countries), fname)

@@ -177,6 +177,14 @@ def main(args):
              **{f"rt_{c}_{m}": rmse_t_by_country[c][m]
                 for c in countries for m in rmse_t_by_country[c]})
 
+    # loss curves + 2019 predictions, so figures can be re-styled without retraining
+    np.savez("outputs/results/figure_data.npz",
+             **{f"curve_{c}_{m}": curves_by_country[c][m]
+                for c in countries for m in curves_by_country[c]},
+             **{f"p19_{c}_{m}": pred2019_by_country[c][m]
+                for c in countries for m in pred2019_by_country[c]},
+             **{f"t19_{c}": true2019_by_country[c] for c in countries})
+
     # ---- figures -----------------------------------------------------------
     print("\nGenerating figures ...")
     plot_loss_curves(curves_by_country, "loss_curves.png")
