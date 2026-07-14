@@ -36,18 +36,32 @@ COUNTRY_CODES = {
     "Denmark": "DNK",
     "Canada":  "CAN",
     "Finland": "FIN",
+    # confirmation-set countries (publication run)
+    "Australia":   "AUS",
+    "Switzerland": "CHE",
+    "Norway":      "NOR",
+    "Sweden":      "SWE",
 }
-SEX = "male"
+SEX = "male"   # default; pass sex= explicitly for the confirmation set
+
+# Discovery set: the 6 male populations used in the replication and all
+# exploratory analysis. Confirmation set: 14 populations never used for any
+# design decision (see HYPOTHESES.md, written before the confirmatory run).
+DISCOVERY_POPS    = [("UK", "male"), ("France", "male"), ("Italy", "male"),
+                     ("Denmark", "male"), ("Canada", "male"), ("Finland", "male")]
+CONFIRMATION_POPS = ([(c, "female") for c, _ in DISCOVERY_POPS] +
+                     [(c, s) for c in ["Australia", "Switzerland", "Norway", "Sweden"]
+                      for s in ["male", "female"]])
 
 
-def load_log_mx(country: str) -> np.ndarray:
+def load_log_mx(country: str, sex: str = SEX) -> np.ndarray:
     """
-    Load one country -> (101, 70) log-mortality matrix, ages 0-100, 1950-2019.
+    Load one population -> (101, 70) log-mortality matrix, ages 0-100, 1950-2019.
     Zeros (missing-data markers in small populations) are forward-filled
     along the year axis before the log transform.
     """
     code = COUNTRY_CODES[country]
-    df = pd.read_parquet(os.path.join(DATA_DIR, f"{code}_{SEX}.parquet"))
+    df = pd.read_parquet(os.path.join(DATA_DIR, f"{code}_{sex}.parquet"))
     ages  = [a for a in df.index   if AGE_MIN <= a <= AGE_MAX]
     years = [y for y in df.columns if YEAR_START <= y <= YEAR_END]
     df = df.loc[ages, years].astype(float)
@@ -74,9 +88,9 @@ class WindowDataset(Dataset):
 
 def prepare_country(country: str, train_end: int = 2009,
                     batch_size: int = 32, seq_len: int = SEQ_LEN,
-                    seed: int = 0):
+                    seed: int = 0, sex: str = SEX):
     """
-    Build the training DataLoader and data bundle for one country and split.
+    Build the training DataLoader and data bundle for one population and split.
 
     train_end : last calendar year included in training (2009 = extended
                 split, 2000 = paper split); test years are train_end+1 .. 2019.
@@ -88,7 +102,7 @@ def prepare_country(country: str, train_end: int = 2009,
     loader   : training DataLoader
     bundle   : dict with raw matrices, the train-only scaler, and split sizes
     """
-    log_mx = load_log_mx(country)                # (101, 70)
+    log_mx = load_log_mx(country, sex)           # (101, 70)
     n_train = train_end - YEAR_START + 1
     n_test  = YEAR_END  - train_end
 

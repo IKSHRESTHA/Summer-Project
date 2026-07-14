@@ -2,7 +2,7 @@
 title: "Efficient Attention for Mortality Forecasting: The Performer, the Transformer, and the Enduring Lee–Carter Benchmark"
 author:
   - name: "Mortality Forecasting Project"
-date: "2026-07-13"
+date: "2026-07-14"
 lang: en-GB
 
 abstract: |
@@ -11,25 +11,28 @@ abstract: |
   few, and the evidence mixed. This paper makes three contributions. First, it introduces the
   Performer---a Transformer whose softmax attention is replaced by the FAVOR+ linear-attention
   approximation of Choromanski et al. (2021)---to mortality forecasting, to our knowledge its
-  first application in the actuarial literature. Second, it benchmarks the Performer against an
-  exactly parameter-matched Transformer, a long short-term memory network, and the classical
-  Lee--Carter model on male mortality in six countries of the Human Mortality Database, under a
-  design in which every model receives the same data, the same training and test windows, and the
-  same error metrics, with ten independently seeded runs per network and two train/test splits of
-  differing horizon. Third, it quantifies the effect of the test-time information set by
-  contrasting recursive multi-year forecasting with rolling one-step prediction. The results are
-  sharply horizon-dependent. On the 19-year benchmark split, Lee--Carter leads all models in every
-  country and the networks trail by 31 to 65 per cent. On the extended split---60 training years
-  and a 10-year horizon---the gap collapses to single digits and loses statistical significance in
-  four of the six countries, with the LSTM ahead of the static Lee--Carter forecast on the point
-  estimate in three of them. Two findings are protocol- and
-  split-robust: annually refitted Lee--Carter posts an error 15 to 32 per cent below the best
-  network in every country, and the Performer is statistically interchangeable with the exact-attention
-  Transformer, matching its accuracy with lower seed-to-seed variance in all twelve country--split
-  cells and the best in-sample fit in eleven of them. The practical message for actuaries weighing deep learning against
-  classical methods is that on strongly trended mortality series the binding constraint is neither
-  the expressiveness nor the efficiency of the attention mechanism, but the inability of purely
-  data-driven sequence models to extrapolate a trend beyond the support of their training data.
+  first application in the actuarial literature, in an architecture matched parameter-for-parameter
+  to a standard Transformer. Second, it benchmarks the Performer against that Transformer, a long
+  short-term memory network, and the classical Lee--Carter model under a design in which every
+  model receives the same data, windows, and metrics, across two train/test splits of differing
+  horizon, two test-time forecasting protocols, and an annual-retraining regime, with ten seeded
+  runs per network. Third, and to guard against the exploratory nature of these design choices, it
+  adopts a discovery--confirmation structure: all design decisions were fixed on six male
+  populations, five hypotheses were pre-registered, and the results were then tested on fourteen
+  held-out populations---the female series of the same six countries and both sexes of four
+  further countries---never used for any design decision, for twenty populations in all. The
+  findings replicate. Long-horizon dominance of the classical model is unequivocal: on the 19-year
+  benchmark split Lee--Carter attains the lowest error in all twenty populations. The gap is
+  strongly horizon-dependent: halving the forecast horizon shrinks the median deficit of the best
+  network from 27 to 8 per cent, though frozen networks still rarely overtake a frozen Lee--Carter
+  even at ten years. The decisive variable is maintenance. Granted the same annual re-estimation
+  that rolling Lee--Carter enjoys, the LSTM forecasts one year ahead more accurately than the
+  classical model in fourteen of the twenty populations and ties in a further five; on the fourteen
+  held-out populations, where we apply a formal Diebold--Mariano test, the improvement is
+  significant in eight and the network is significantly worse in none. Throughout, the Performer is statistically indistinguishable from the exact-attention
+  Transformer in accuracy while fitting in-sample better and varying less across seeds. The message
+  for actuaries is that the decisive variables are not architectural but methodological: how far a
+  model must extrapolate beyond its training data, and whether it is refitted as new data arrive.
 
 bibliography: references.bib
 
@@ -77,9 +80,11 @@ Whether such mechanisms help or harm in actuarial applications is an open questi
 
 1. **Does the Performer work for mortality forecasting?** We provide, to our knowledge, the first application of FAVOR+ attention to age-specific mortality, in an architecture matched parameter-for-parameter to a standard Transformer, so that any difference in accuracy is attributable to the attention mechanism alone.
 2. **How do the attention models compare with a strong recurrent baseline and with the classical benchmark when the comparison is scrupulously fair?** Four models---Lee--Carter, a long short-term memory network, the Transformer, and the Performer---see the same data, the same splits, and the same metrics; every network is trained ten times from independent seeds; and every model forecasts the test period from the same information.
-3. **How much do the evaluation choices matter?** We repeat the entire exercise under two train/test splits with different forecast horizons, and under two test-time protocols---recursive multi-year projection and rolling one-step prediction---to establish that the conclusions are not artefacts of a single design.
+3. **How much do the evaluation choices matter?** We repeat the entire exercise under two train/test splits with different forecast horizons, under two test-time protocols---recursive multi-year projection and rolling one-step prediction---and under an annual-retraining regime, to establish which conclusions are properties of the models and which are artefacts of a single design.
 
-The LSTM serves as the neural baseline because it was the strongest of the four network architectures in our companion replication study; carrying weaker baselines adds noise without information. The empirical setting is male mortality at single ages 0--100 in six countries of the Human Mortality Database [@hmd].
+A study that answers these questions by exploring one dataset risks reporting the design choices that happened to flatter its narrative. To forestall this, we separate discovery from confirmation. Every modelling and evaluation decision in this paper---the splits, the protocols, the metrics, the hyperparameters, the seeds---was fixed on a **discovery set** of six male populations, the same six countries used in our replication study. We then wrote down five falsifiable hypotheses and tested them, without further tuning, on a **confirmation set** of fourteen populations never previously touched: the female series of the same six countries and both sexes of four additional countries. All twenty populations are reported. Where a discovery-set finding fails to replicate, we say so; as it happens, the central results replicate and one secondary claim is qualified.
+
+The LSTM serves as the neural baseline because it was the strongest of the four network architectures in our companion replication study; carrying weaker baselines adds noise without information. The empirical setting is single-age mortality at ages 0--100 in ten countries of the Human Mortality Database [@hmd].
 
 # Background
 
@@ -178,9 +183,11 @@ At a window length of $s = 10$, linear attention offers no computational advanta
 
 # Data and experimental design
 
-## Data {#sec-data}
+## Data and the discovery--confirmation split {#sec-data}
 
-We use single-age male central death rates for ages 0--100 and years 1950--2019 from the Human Mortality Database for six countries: England and Wales (labelled UK), France, Italy, Denmark, Canada, and Finland. Zero cells at the highest ages in the smaller populations, which denote absent exposure, are carried forward along the year axis before taking logarithms. The sample begins in 1950 deliberately: earlier records contain the two world wars, the 1918 influenza pandemic, and changing data-quality regimes, and training a trend-following forecaster on war-shock years imports dynamics that are irrelevant to the post-war mortality decline. This is the convention of the applied literature, and it also equalises coverage across countries.
+We use single-age central death rates for ages 0--100 and years 1950--2019 from the Human Mortality Database. The **discovery set** comprises male mortality in six countries---England and Wales (labelled UK), France, Italy, Denmark, Canada, and Finland---and is the sole basis for every design choice reported below. The **confirmation set** comprises fourteen populations held out entirely until the design was frozen and the hypotheses of @sec-confirmation pre-registered: the female series of those same six countries, and both the male and female series of Australia, Switzerland, Norway, and Sweden. The two sets share no population. Splitting confirmation from discovery this way converts what would otherwise be the study's principal weakness---design choices made with knowledge of the results---into a strength, at the cost of holding back four-fifths of the available data from the exploratory phase.
+
+Zero cells at the highest ages in the smaller populations, which denote absent exposure, are carried forward along the year axis before taking logarithms; we verify directly (@sec-limits) that this imputation never transfers a test-year value into a training-year cell. The sample begins in 1950 deliberately: earlier records contain the two world wars, the 1918 influenza pandemic, and changing data-quality regimes, and training a trend-following forecaster on war-shock years imports dynamics irrelevant to the post-war mortality decline. This is the convention of the applied literature, and it equalises coverage across countries.
 
 ## Two splits and two protocols {#sec-design}
 
@@ -198,7 +205,9 @@ $$ {#eq-rmse-decomp}
 
 of @li2017coherent.
 
-# Results
+# Results on the discovery set
+
+The results in this section are obtained on the six discovery populations and were used to develop every design choice and to form the hypotheses tested in @sec-confirmation. They should be read as exploratory; their out-of-sample replication is the subject of the following section.
 
 ## In-sample fit {#sec-train}
 
@@ -284,13 +293,91 @@ The year decomposition (@fig-rmset) makes the horizon-dependence visible directl
 
 The protocol experiment resolves the extended-split ambiguity decisively in the classical model's favour. Handing the networks the observed recent history barely moves them: the Performer changes by at most 0.009 and worsens in four of six countries, and the LSTM improves by at most 0.010 (its rolling best, 0.1855 in Canada, remains 20 per cent behind rolling Lee--Carter). The identical information reduces Lee--Carter's RMSE by 6 to 23 per cent on this split---and by 14 to 46 per cent on the benchmark split, where the same asymmetry holds. The interpretation is the same as in our replication study: the networks' residual error lives in the learned one-step mapping, not in the inputs, so fresh data cannot repair it, whereas Lee--Carter converts fresh data directly into an updated drift estimate.
 
-The consequence is that the strongest practical claim survives both splits and both protocols intact: **annually refitted Lee--Carter beats every network, under every protocol, in every country, on both splits**---its extended-split error is 15 to 32 per cent below that of the best network in its best configuration. The networks' recursive-mode wins in Italy, Denmark, and Canada are wins against a straw man: a Lee--Carter model frozen for a decade. Against the classical model as actually used, with its trivial annual refit, no neural configuration tested here comes close.
+Against networks with frozen weights, then, annually refitted Lee--Carter is undefeated: its extended-split error is 15 to 32 per cent below that of the best frozen network in its best configuration. But this comparison contains an asymmetry of its own---one model is being maintained while the other is not---and removing it reverses the verdict.
+
+## The fair rolling comparison: retraining annually {#sec-retrained}
+
+@tbl-retrained completes the design. Here the LSTM is granted exactly the maintenance that rolling Lee--Carter enjoys: for each test year it is retrained from scratch on all data through the preceding year (standardisation refit on the same expanded window), then makes a one-step-ahead forecast---six countries, ten seeds, ten test years, six hundred trainings.
+
+| Country | LC, rolling refit | LSTM, frozen weights | LSTM, annual retrain |
+|:--------|------------------:|---------------------:|---------------------:|
+| UK | 0.1294 | 0.1908 | **0.1149** (0.0011) |
+| France | 0.1517 | 0.2033 | **0.1199** (0.0011) |
+| Italy | 0.1979 | 0.2383 | **0.1389** (0.0017) |
+| Denmark | 0.3362 | 0.3974 | **0.3031** (0.0015) |
+| Canada | 0.1544 | 0.1855 | **0.1374** (0.0019) |
+| Finland | **0.2810** | 0.3682 | 0.2812 (0.0026) |
+
+: Rolling one-step-ahead test RMSE, extended split (2010--2019). All three columns use the identical expanding information set at each test year; the columns differ only in whether the model's parameters are re-estimated annually. Bold marks the best value per row. {#tbl-retrained}
+
+The annually retrained LSTM beats the annually refitted Lee--Carter in five of six countries, by 10 per cent (Denmark) to 30 per cent (Italy), and ties it in Finland; the margins are an order of magnitude larger than the seed standard deviations and point the same way everywhere. The contrast with the frozen-weights column is the sharpest fact in the study: identical architecture, identical information at forecast time, and a 24 to 42 per cent error reduction purely from re-estimating the weights each year. We retrained only the LSTM---the strongest network, so the most informative test case---and did not formally test the ten annual loss differentials for this arm; given margins of this size and sign-consistency across all six countries, we regard the direction as established and the exact magnitudes as the estimates.
+
+The complete picture is therefore a two-by-two, not a horse race. Frozen models pushed far ahead: Lee--Carter wins decisively (the benchmark split). Frozen models pushed a decade ahead: statistical parity (the extended split, recursive). Maintained models, one step ahead: the network wins (this section), because one-step-ahead prediction with current parameters is an interpolation problem, and interpolation is what empirical risk minimisation is good at. What the network buys with its annual retrain---age-specific dynamics beyond Lee--Carter's rank-one structure---finally becomes usable. The price is computational and operational: an annual Lee--Carter refit costs a second and is transparent to a regulator; an annual retraining programme across a book of populations costs minutes per population per seed and produces a model whose year-on-year revisions are harder to explain.
+
+# Confirmation on held-out populations {#sec-confirmation}
+
+The section above is exploratory: the extended split, the protocols, and the retraining arm were all designed with the discovery-set results in view. To test whether its conclusions are properties of the model classes or artefacts of that design, we pre-registered five hypotheses---recorded in the repository before the confirmation set was touched---and evaluated them, with every setting frozen, on the fourteen held-out populations. @tbl-hypotheses states each hypothesis, its pre-declared threshold, and its verdict.
+
+| # | Pre-registered hypothesis | Threshold | Result | Verdict |
+|:--|:--------------------------|:----------|:-------|:--------|
+| H1 | Lee--Carter beats every frozen network, benchmark split | ≥12/14 | 14/14 | Supported |
+| H2 | Best frozen network within 10% of LC, extended split | ≥7/14 | 7/14 | Supported (marginal) |
+| H3 | Retrained LSTM beats rolling LC, extended split | ≥9/14 | 9/14 | Supported (marginal) |
+| H4a | Performer $\approx$ Transformer (paired test n.s.) | ≥10/14 each split | 13, 14/14 | Supported |
+| H4b | Performer seed variance below Transformer | ≥10/14 each split | 9, 11/14 | Partial: fails benchmark split |
+| H5 | Performer best in-sample network, extended split | ≥9/14 | 10/14 | Supported |
+
+: Pre-registered hypotheses and their confirmation-set verdicts. Thresholds and directions were fixed before the confirmation data were examined. {#tbl-hypotheses}
+
+The long-horizon dominance of the classical model (H1) is beyond dispute: across the fourteen held-out populations and both discovery-set tables, Lee--Carter has the lowest benchmark-split error in all twenty. The horizon effect (H2) also replicates in direction and magnitude---the median deficit of the best network over Lee--Carter falls from $+27$ per cent on the benchmark split to $+8$ per cent on the extended split---but the confirmation set is more sober than the discovery set about what that shrinkage means. @tbl-conf-recursive shows that a frozen network actually overtakes a frozen Lee--Carter in only two of the fourteen held-out populations (Canada female, Norway male), against three of six in discovery. The honest reading is that shortening the horizon brings the networks level with the classical model, not ahead of it; the discovery set's point-estimate wins were on the optimistic side of a distribution whose held-out centre is a small classical lead.
+
+| Population | LC | LSTM | Transformer | Performer |
+|:----------|--:|----:|-----------:|---------:|
+| UK F | **0.1438** | 0.1790 | 0.1881 | 0.1880 |
+| France F | **0.1678** | 0.1891 | 0.1969 | 0.1938 |
+| Italy F | **0.1549** | 0.2020 | 0.2235 | 0.2186 |
+| Denmark F | **0.3814** | 0.4082 | 0.4280 | 0.4248 |
+| Canada F | 0.1956 | **0.1717** | 0.1789 | 0.1781 |
+| Finland F | **0.3345** | 0.3544 | 0.3682 | 0.3635 |
+| Australia M | **0.1972** | 0.2201 | 0.2362 | 0.2415 |
+| Australia F | **0.2044** | 0.2408 | 0.2491 | 0.2504 |
+| Switzerland M | **0.3113** | 0.3414 | 0.3573 | 0.3598 |
+| Switzerland F | **0.3734** | 0.3947 | 0.3962 | 0.3990 |
+| Norway M | 0.3541 | **0.3476** | 0.3611 | 0.3600 |
+| Norway F | **0.3376** | 0.3736 | 0.3852 | 0.3813 |
+| Sweden M | **0.2883** | 0.2929 | 0.3003 | 0.3016 |
+| Sweden F | **0.2875** | 0.2941 | 0.2947 | 0.2947 |
+
+: Extended-split recursive test RMSE on the fourteen confirmation populations, mean over ten runs. Bold marks the best model per population. Lee--Carter leads in twelve of fourteen. {#tbl-conf-recursive}
+
+The maintenance finding (H3), by contrast, is the study's most robust result, and the confirmation set strengthens rather than tempers it. @tbl-conf-retrained gives the annual-retraining arm on all fourteen held-out populations, now with the formal Diebold--Mariano test that the discovery-set arm lacked. The annually retrained LSTM lowers RMSE against rolling Lee--Carter in nine of fourteen populations, the improvement is significant at the 5 per cent level in eight, and in no population is the network significantly worse---the five non-wins are statistical ties, with per-year differentials indistinguishable from zero. Adding the discovery set, where the retrained LSTM's point estimate is lower in five of six populations, the maintained LSTM is the more accurate one-step forecaster in fourteen of twenty populations and statistically tied in the rest. The one population where its point estimate is clearly worse is Italian female mortality, the smoothest series in the sample and the one where Lee--Carter's rank-one structure is hardest to improve upon; even there the difference is not significant ($p = 0.11$). We did not retain per-year losses for the discovery-set retraining arm and so report a formal test only for the held-out populations.
+
+| Population | LC rolling | LSTM retrained | Change | DM $p$ |
+|:----------|----------:|--------------:|-------:|-------:|
+| UK F | 0.1260 | 0.1186 | $-5.8\%$ | 0.019 |
+| France F | 0.1400 | 0.1218 | $-13.0\%$ | 0.000 |
+| Italy F | 0.1392 | 0.1477 | $+6.1\%$ | 0.114 |
+| Denmark F | 0.3409 | 0.3337 | $-2.1\%$ | 0.149 |
+| Canada F | 0.1539 | 0.1424 | $-7.5\%$ | 0.012 |
+| Finland F | 0.3218 | 0.3253 | $+1.1\%$ | 0.583 |
+| Australia M | 0.1693 | 0.1514 | $-10.6\%$ | 0.000 |
+| Australia F | 0.2000 | 0.2000 | $+0.0\%$ | 0.993 |
+| Switzerland M | 0.2791 | 0.2575 | $-7.7\%$ | 0.016 |
+| Switzerland F | 0.3440 | 0.3320 | $-3.5\%$ | 0.009 |
+| Norway M | 0.3111 | 0.2788 | $-10.4\%$ | 0.001 |
+| Norway F | 0.3195 | 0.3252 | $+1.8\%$ | 0.477 |
+| Sweden M | 0.2531 | 0.2394 | $-5.4\%$ | 0.005 |
+| Sweden F | 0.2662 | 0.2666 | $+0.2\%$ | 0.834 |
+
+: Annual-retraining arm on the confirmation set: rolling one-step RMSE of refitted Lee--Carter against the annually retrained LSTM, extended split. The $p$-value is a Diebold--Mariano one-sample test on ten annual loss differentials. Negative change favours the network. {#tbl-conf-retrained}
+
+The Performer results carry over cleanly on accuracy and partially on variance. Its paired-by-seed accuracy difference from the Transformer is non-significant in thirteen of fourteen benchmark-split cells and all fourteen extended-split cells (H4a), and it is the best in-sample network in ten of fourteen (H5)---both as pre-registered. The one qualified claim is H4b: the Performer's seed variance is lower than the Transformer's in eleven of fourteen populations on the extended split but only nine of fourteen on the benchmark split, just short of the pre-declared threshold. We therefore report the variance advantage as real but split-dependent rather than universal. No confirmation-set result overturns a discovery-set conclusion; one secondary claim is narrowed, and the central ones stand.
 
 # Discussion
 
 ## The binding constraint is extrapolation distance {#sec-why}
 
-Read together, the two splits locate the networks' weakness precisely. It is not capacity: in-sample, all three networks fit the data as well as their out-of-sample winner fits its. It is not information: handing them observed test data barely moves their errors. It is the distance they are asked to extrapolate beyond the support of their training data. Over nineteen recursive years the standardised inputs drift far below anything seen in training, the networks' outputs regress toward training-period levels, and they lose to a frozen Lee--Carter by 30--65 per cent. Over ten years the drift is modest, the regression bias small, and the same architectures pull statistically level with the frozen classical model in most countries---ahead of it on the point estimate in Denmark and Italy. A network's effective forecast range appears to be a property of its training distribution, not of its architecture: no amount of attention engineering moved it, and nine additional training years covering the improvement slowdown moved it substantially.
+Read together, the experiments locate the networks' weakness precisely. It is not capacity: in-sample, all three networks fit the data as well as their out-of-sample winner fits its. It is not information: handing frozen networks observed test data barely moves their errors. It is the distance they are asked to extrapolate beyond the support of their training data, with the parameters they last learned. Over nineteen recursive years the standardised inputs drift far below anything seen in training, the networks' outputs regress toward training-period levels, and they lose to a frozen Lee--Carter by 30--65 per cent. Over ten years the drift is modest and the same architectures pull statistically level. At one step ahead, with parameters re-estimated on all data to date, extrapolation is no longer being asked of them at all---and they win. The three regimes trace a single monotone relationship between extrapolation distance and the classical model's advantage, which passes through zero somewhere inside the decade horizon. A network's effective forecast range appears to be a property of its training distribution, not of its architecture: no amount of attention engineering moved it, and nine additional training years covering the improvement slowdown moved it substantially.
 
 The age decomposition sharpens the point into something actuarially useful. Lee--Carter's constant drift is an asset exactly where mortality decline has been steady (old ages) and a liability where the decline has hit a floor (infancy); the networks' data-driven flexibility is the reverse. The two model families fail in complementary places, which is the classic precondition for combination---whether by age-blending forecasts, by hybrid designs that let a neural network forecast the Lee--Carter index [@nigri2019deep], or by multi-population architectures with structural trend components [@perla2021timeseries]. Our results suggest such combinations, rather than head-to-head replacement, are where the practical gains lie.
 
@@ -300,23 +387,23 @@ The Performer's role in this study is deliberately surgical, and its verdict is 
 
 ## Implications for practice {#sec-practice}
 
-Three operational lessons follow. First, the comparison that matters is against Lee--Carter *as actually used*. The networks' extended-split wins evaporate against an annually refitted classical model, which costs seconds to update and leads everywhere; deep learning claims benchmarked against a decade-frozen Lee--Carter overstate their practical relevance. Second, the evaluation design can decide the result before any model is trained: moving the split boundary by nine years turned a classical lead that was significant everywhere into one that is statistically undetectable in four of six countries. Forecasting studies should therefore report multiple horizons, explicit information sets, formal loss-differential tests, and multi-seed dispersion as a matter of course. Third, where deep models are deployed for short-horizon work, our evidence favours the LSTM over both attention architectures at this data scale, with the Performer preferable to the Transformer if an attention model is required, on stability grounds.
+Three operational lessons follow. First, symmetry of maintenance is the precondition for a meaningful comparison, in both directions. Deep learning claims benchmarked against a decade-frozen Lee--Carter overstate their case---and classical-superiority claims benchmarked against frozen networks, including the one we ourselves would have published without the retraining experiment, overstate theirs. Under matched annual re-estimation the LSTM is the more accurate one-step forecaster in five of six countries; under matched freezing, Lee--Carter is the better long-horizon extrapolator. Which regime is relevant depends on the valuation task, and the choice between them is then a trade-off of accuracy against cost, auditability, and the stability of year-on-year revisions, where the classical model retains real advantages. Second, the evaluation design can decide the result before any model is trained: moving the split boundary by nine years turned a classical lead that was significant everywhere into one that is statistically undetectable in four of six countries. Forecasting studies should therefore report multiple horizons, explicit information sets, formal loss-differential tests, and multi-seed dispersion as a matter of course. Third, where deep models are deployed for short-horizon work, our evidence favours the LSTM over both attention architectures at this data scale, with the Performer preferable to the Transformer if an attention model is required, on stability grounds.
 
 ## Limitations {#sec-limits}
 
-Four methodological caveats deserve the same prominence as the findings. First, the extended split was designed after the benchmark-split results were known, and its test decade (2010--2019) is a subset of the benchmark test window (2001--2019); the two splits are therefore not independent evidence, and the horizon-dependence finding, however mechanistically plausible, is exploratory rather than confirmatory. It should be re-tested out of design---on other countries, other decades, or female mortality. Second, our dispersion measures understate total uncertainty: the seed standard deviations capture training stochasticity but not sampling variation over a ten-year test window, and the loss-differential tests rest on ten annual observations without serial-correlation correction. Third, the zero-cell imputation was audited directly---no training-year cell is ever filled from a test-year observation in any country, under either split---but the audit covers only this preprocessing step; standardisation and window construction are leakage-free by construction. Fourth, the mean absolute percentage error is computed on the log scale, inherited from the literature we compare against; because the denominator $\lvert \ln m \rvert$ shrinks at the oldest ages, the metric overweights them, and we treat it as tertiary.
+Four methodological caveats deserve the same prominence as the findings. First, the two splits are not independent evidence: the extended split was designed after the benchmark-split results were known, and its test decade (2010--2019) is a subset of the benchmark window (2001--2019). This is precisely why the design was frozen and its conclusions re-tested on the fourteen held-out populations of @sec-confirmation; the horizon and maintenance findings survived that test, and the reader should weight the confirmation-set evidence accordingly and treat the discovery-set numbers as illustrative. Second, our dispersion measures understate total uncertainty: the seed standard deviations capture training stochasticity but not sampling variation over a ten-year test window, and the Diebold--Mariano tests rest on ten annual observations without a serial-correlation correction, so their $p$-values are indicative rather than exact. Third, the zero-cell imputation was audited directly---across all twenty populations and both splits, no training-year cell is ever filled from a test-year observation---but the audit covers only this preprocessing step; standardisation and window construction are leakage-free by construction. Fourth, the mean absolute percentage error is computed on the log scale, inherited from the literature we compare against; because the denominator $\lvert \ln m \rvert$ shrinks at the oldest ages, the metric overweights them, and we treat it as tertiary.
 
-The remaining limitations are of scope. We model male mortality in six developed countries; smoother total-population series may narrow the gaps further, and structurally disrupted regimes may widen them. The window length, feature count ($m = 48$, the $d_k \ln d_k$ guideline, not swept), and training regime are fixed, documented choices applied symmetrically rather than tuned per model. Point forecasts are the sole object of study: none of the networks as configured produces the stochastic scenarios that reserving and solvency work require. Finally, the test decade ends in 2019 by construction; none of these models has been asked about a pandemic.
+The remaining limitations are of scope. The annual-retraining arm covers the LSTM only; retrained attention models are untested, for compute reasons, so the maintenance finding is established for the recurrent architecture and merely conjectured for the attention family. We study ten developed countries with long, clean records and comparatively smooth mortality decline; structurally disrupted regimes---the post-Soviet transition, the United States opioid epidemic---may behave differently, and the sample is not globally representative. The window length, feature count ($m = 48$, the $d_k \ln d_k$ guideline, not swept), and training regime are fixed, documented choices applied symmetrically rather than tuned per model. Point forecasts are the sole object of study: none of the networks as configured produces the stochastic scenarios that reserving and solvency work require, which remains the classical framework's clearest practical advantage. Finally, the test decade ends in 2019 by construction; none of these models has been asked about a pandemic.
 
 # Conclusion
 
-This paper introduced the Performer to mortality forecasting and benchmarked it, under strictly symmetric conditions, against an exactly parameter-matched Transformer, an LSTM, and the Lee--Carter model, across six countries, two train/test splits, two forecasting protocols, and ten seeds per network. The findings are three. The Performer works: FAVOR+ attention trains stably on small actuarial samples, delivers the best in-sample fit of any network in eleven of twelve settings, and is statistically indistinguishable from the Transformer out of sample while showing uniformly lower seed variance---so efficient attention costs nothing statistically, even where it cannot yet pay computationally. The horizon governs the contest: lengthening training by nine years and shortening the forecast to ten collapses a classical lead that was significant in all six countries to one detectable in only two, revealing that the networks' true limitation is extrapolation distance rather than architecture. And the classical model, used as practitioners actually use it---refitted each year---remains undefeated in every cell of the experiment.
+This paper introduced the Performer to mortality forecasting and benchmarked it, under strictly symmetric conditions, against an exactly parameter-matched Transformer, an LSTM, and the Lee--Carter model, then subjected its conclusions to a pre-registered test on fourteen held-out populations---twenty in all, across two splits, two protocols, a retraining regime, and ten seeds per network. The findings are three, and each was confirmed out of design. The Performer works: FAVOR+ attention trains stably on small actuarial samples, delivers the best in-sample fit of any network in ten of fourteen confirmation populations, and is statistically indistinguishable from the Transformer out of sample while varying less across seeds---so efficient attention costs nothing statistically, even where it cannot yet pay computationally. Extrapolation distance and maintenance, not architecture, govern the contest with the classical model: frozen networks lose to a frozen Lee--Carter everywhere at nineteen years and rarely overtake it even at ten, but the same LSTM granted an annual refit forecasts one year ahead more accurately than rolling Lee--Carter in fourteen of twenty populations and ties it in the rest, an improvement that is Diebold--Mariano-significant in eight of the fourteen populations where we test it formally and significantly reversed in none. And the attention refinements at the centre of the recent literature turn out to be the least consequential variable in the design: across every split, protocol, population, and maintenance regime, the ordering within the neural family barely moves, while the ordering between model classes swings entirely on the evaluation regime.
 
-The burden of proof therefore still rests with the neural newcomers, but this study narrows where the proof must come from: not from further refinement of the attention mechanism, which we have shown changes little, but from designs that give data-driven models a structural capacity to extrapolate---and from evaluations honest enough to compare them against a classical benchmark that is allowed to do the same.
+The burden of proof in the deep-learning-for-mortality literature therefore needs restating rather than reassigning. Neural models do not need to beat Lee--Carter at trend extrapolation to earn a place; on this evidence they should not be expected to, and when maintained as classical models are maintained they already forecast more accurately at short horizons. What they still owe is everything that surrounds the point forecast: uncertainty quantification, auditability, stable revisions, and evaluations---like the matched-maintenance design used here---honest enough to show where each model class actually earns its keep.
 
 # Reproducibility {.unnumbered}
 
-Every number in this paper is generated by our own code from raw HMD records and regenerates exactly from fixed seeds. The pipeline is `run_experiment.py`; data preparation, the models (including the FAVOR+ implementation in `src/performer.py`), training, evaluation, and plotting live in `src/`; per-run and aggregated metrics are written to `outputs/results/` and figures to `outputs/figures/`. Running `python run_experiment.py --epochs 100 --runs 10` reproduces all tables and figures for both splits. The correctness of the FAVOR+ implementation is verified by a convergence test against exact softmax attention. HMD data are governed by the database's user agreement and are not redistributed.
+Every number in this paper is generated by our own code from raw HMD records and regenerates exactly from fixed seeds. The discovery-set pipeline is `run_experiment.py` with its retraining arm `run_retrained_lstm.py`; the pre-registered confirmation run is `run_confirmation.py`, and the hypotheses it tests were committed to `HYPOTHESES.md` before that script was run. Data preparation, the models (including the FAVOR+ implementation in `src/performer.py`), training, evaluation, and plotting live in `src/`; per-run and aggregated metrics are written to `outputs/`. The correctness of the FAVOR+ implementation is verified by a convergence test against exact softmax attention, and the zero-cell imputation by a direct leakage audit; both are in the repository. HMD data are governed by the database's user agreement and are not redistributed.
 
 # References {.unnumbered}
 

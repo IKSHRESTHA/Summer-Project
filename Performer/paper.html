@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Mortality Forecasting Project">
-<meta name="dcterms.date" content="2026-07-13">
+<meta name="dcterms.date" content="2026-07-14">
 
 <title>Efficient Attention for Mortality Forecasting: The Performer, the Transformer, and the Enduring Lee–Carter Benchmark</title>
 <style>
@@ -2344,17 +2344,19 @@ window.Quarto = {
   </ul></li>
   <li><a href="#data-and-experimental-design" id="toc-data-and-experimental-design" class="nav-link" data-scroll-target="#data-and-experimental-design">Data and experimental design</a>
   <ul class="collapse">
-  <li><a href="#sec-data" id="toc-sec-data" class="nav-link" data-scroll-target="#sec-data">Data</a></li>
+  <li><a href="#sec-data" id="toc-sec-data" class="nav-link" data-scroll-target="#sec-data">Data and the discovery–confirmation split</a></li>
   <li><a href="#sec-design" id="toc-sec-design" class="nav-link" data-scroll-target="#sec-design">Two splits and two protocols</a></li>
   </ul></li>
-  <li><a href="#results" id="toc-results" class="nav-link" data-scroll-target="#results">Results</a>
+  <li><a href="#results-on-the-discovery-set" id="toc-results-on-the-discovery-set" class="nav-link" data-scroll-target="#results-on-the-discovery-set">Results on the discovery set</a>
   <ul class="collapse">
   <li><a href="#sec-train" id="toc-sec-train" class="nav-link" data-scroll-target="#sec-train">In-sample fit</a></li>
   <li><a href="#sec-test" id="toc-sec-test" class="nav-link" data-scroll-target="#sec-test">Out-of-sample accuracy</a></li>
   <li><a href="#sec-pf-vs-tf" id="toc-sec-pf-vs-tf" class="nav-link" data-scroll-target="#sec-pf-vs-tf">Performer versus Transformer</a></li>
   <li><a href="#sec-structure" id="toc-sec-structure" class="nav-link" data-scroll-target="#sec-structure">Error structure by age and horizon</a></li>
   <li><a href="#sec-protocol" id="toc-sec-protocol" class="nav-link" data-scroll-target="#sec-protocol">Sensitivity to the forecasting protocol</a></li>
+  <li><a href="#sec-retrained" id="toc-sec-retrained" class="nav-link" data-scroll-target="#sec-retrained">The fair rolling comparison: retraining annually</a></li>
   </ul></li>
+  <li><a href="#sec-confirmation" id="toc-sec-confirmation" class="nav-link" data-scroll-target="#sec-confirmation">Confirmation on held-out populations</a></li>
   <li><a href="#discussion" id="toc-discussion" class="nav-link" data-scroll-target="#discussion">Discussion</a>
   <ul class="collapse">
   <li><a href="#sec-why" id="toc-sec-why" class="nav-link" data-scroll-target="#sec-why">The binding constraint is extrapolation distance</a></li>
@@ -2391,7 +2393,7 @@ window.Quarto = {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">13 July 2026</p>
+      <p class="date">14 July 2026</p>
     </div>
   </div>
   
@@ -2401,7 +2403,7 @@ window.Quarto = {
 <div>
   <div class="abstract">
     <div class="block-title">Abstract</div>
-    <p>Attention-based neural networks have been proposed as replacements for the Lee–Carter model in age-specific mortality forecasting, but the sequences involved are short, the training samples few, and the evidence mixed. This paper makes three contributions. First, it introduces the Performer—a Transformer whose softmax attention is replaced by the FAVOR+ linear-attention approximation of Choromanski et al. (2021)—to mortality forecasting, to our knowledge its first application in the actuarial literature. Second, it benchmarks the Performer against an exactly parameter-matched Transformer, a long short-term memory network, and the classical Lee–Carter model on male mortality in six countries of the Human Mortality Database, under a design in which every model receives the same data, the same training and test windows, and the same error metrics, with ten independently seeded runs per network and two train/test splits of differing horizon. Third, it quantifies the effect of the test-time information set by contrasting recursive multi-year forecasting with rolling one-step prediction. The results are sharply horizon-dependent. On the 19-year benchmark split, Lee–Carter leads all models in every country and the networks trail by 31 to 65 per cent. On the extended split—60 training years and a 10-year horizon—the gap collapses to single digits, and the LSTM overtakes the static Lee–Carter forecast in three of the six countries. Two findings are protocol- and split-robust: annually refitted Lee–Carter posts an error 15 to 32 per cent below the best network in every country, and the Performer is statistically interchangeable with the exact-attention Transformer, matching its accuracy with lower seed-to-seed variance in all twelve country–split cells and the best in-sample fit in eleven of them. The practical message for actuaries weighing deep learning against classical methods is that on strongly trended mortality series the binding constraint is neither the expressiveness nor the efficiency of the attention mechanism, but the inability of purely data-driven sequence models to extrapolate a trend beyond the support of their training data.</p>
+    <p>Attention-based neural networks have been proposed as replacements for the Lee–Carter model in age-specific mortality forecasting, but the sequences involved are short, the training samples few, and the evidence mixed. This paper makes three contributions. First, it introduces the Performer—a Transformer whose softmax attention is replaced by the FAVOR+ linear-attention approximation of Choromanski et al. (2021)—to mortality forecasting, to our knowledge its first application in the actuarial literature, in an architecture matched parameter-for-parameter to a standard Transformer. Second, it benchmarks the Performer against that Transformer, a long short-term memory network, and the classical Lee–Carter model under a design in which every model receives the same data, windows, and metrics, across two train/test splits of differing horizon, two test-time forecasting protocols, and an annual-retraining regime, with ten seeded runs per network. Third, and to guard against the exploratory nature of these design choices, it adopts a discovery–confirmation structure: all design decisions were fixed on six male populations, five hypotheses were pre-registered, and the results were then tested on fourteen held-out populations—the female series of the same six countries and both sexes of four further countries—never used for any design decision, for twenty populations in all. The findings replicate. Long-horizon dominance of the classical model is unequivocal: on the 19-year benchmark split Lee–Carter attains the lowest error in all twenty populations. The gap is strongly horizon-dependent: halving the forecast horizon shrinks the median deficit of the best network from 27 to 8 per cent, though frozen networks still rarely overtake a frozen Lee–Carter even at ten years. The decisive variable is maintenance. Granted the same annual re-estimation that rolling Lee–Carter enjoys, the LSTM forecasts one year ahead more accurately than the classical model in fourteen of the twenty populations and ties in a further five; on the fourteen held-out populations, where we apply a formal Diebold–Mariano test, the improvement is significant in eight and the network is significantly worse in none. Throughout, the Performer is statistically indistinguishable from the exact-attention Transformer in accuracy while fitting in-sample better and varying less across seeds. The message for actuaries is that the decisive variables are not architectural but methodological: how far a model must extrapolate beyond its training data, and whether it is refitted as new data arrive.</p>
   </div>
 </div>
 
@@ -2417,9 +2419,10 @@ window.Quarto = {
 <ol type="1">
 <li><strong>Does the Performer work for mortality forecasting?</strong> We provide, to our knowledge, the first application of FAVOR+ attention to age-specific mortality, in an architecture matched parameter-for-parameter to a standard Transformer, so that any difference in accuracy is attributable to the attention mechanism alone.</li>
 <li><strong>How do the attention models compare with a strong recurrent baseline and with the classical benchmark when the comparison is scrupulously fair?</strong> Four models—Lee–Carter, a long short-term memory network, the Transformer, and the Performer—see the same data, the same splits, and the same metrics; every network is trained ten times from independent seeds; and every model forecasts the test period from the same information.</li>
-<li><strong>How much do the evaluation choices matter?</strong> We repeat the entire exercise under two train/test splits with different forecast horizons, and under two test-time protocols—recursive multi-year projection and rolling one-step prediction—to establish that the conclusions are not artefacts of a single design.</li>
+<li><strong>How much do the evaluation choices matter?</strong> We repeat the entire exercise under two train/test splits with different forecast horizons, under two test-time protocols—recursive multi-year projection and rolling one-step prediction—and under an annual-retraining regime, to establish which conclusions are properties of the models and which are artefacts of a single design.</li>
 </ol>
-<p>The LSTM serves as the neural baseline because it was the strongest of the four network architectures in our companion replication study; carrying weaker baselines adds noise without information. The empirical setting is male mortality at single ages 0–100 in six countries of the Human Mortality Database <span class="citation" data-cites="hmd">(<a href="#ref-hmd" role="doc-biblioref">Human Mortality Database 2024</a>)</span>.</p>
+<p>A study that answers these questions by exploring one dataset risks reporting the design choices that happened to flatter its narrative. To forestall this, we separate discovery from confirmation. Every modelling and evaluation decision in this paper—the splits, the protocols, the metrics, the hyperparameters, the seeds—was fixed on a <strong>discovery set</strong> of six male populations, the same six countries used in our replication study. We then wrote down five falsifiable hypotheses and tested them, without further tuning, on a <strong>confirmation set</strong> of fourteen populations never previously touched: the female series of the same six countries and both sexes of four additional countries. All twenty populations are reported. Where a discovery-set finding fails to replicate, we say so; as it happens, the central results replicate and one secondary claim is qualified.</p>
+<p>The LSTM serves as the neural baseline because it was the strongest of the four network architectures in our companion replication study; carrying weaker baselines adds noise without information. The empirical setting is single-age mortality at ages 0–100 in ten countries of the Human Mortality Database <span class="citation" data-cites="hmd">(<a href="#ref-hmd" role="doc-biblioref">Human Mortality Database 2024</a>)</span>.</p>
 </section>
 <section id="background" class="level1">
 <h1>Background</h1>
@@ -2500,8 +2503,9 @@ D = \text{diag}\left( \phi(Q)\, \phi(K)^\top \mathbf{1}_s \right),
 <section id="data-and-experimental-design" class="level1">
 <h1>Data and experimental design</h1>
 <section id="sec-data" class="level2">
-<h2 class="anchored" data-anchor-id="sec-data">Data</h2>
-<p>We use single-age male central death rates for ages 0–100 and years 1950–2019 from the Human Mortality Database for six countries: England and Wales (labelled UK), France, Italy, Denmark, Canada, and Finland. Zero cells at the highest ages in the smaller populations, which denote absent exposure, are carried forward along the year axis before taking logarithms. The sample begins in 1950 deliberately: earlier records contain the two world wars, the 1918 influenza pandemic, and changing data-quality regimes, and training a trend-following forecaster on war-shock years imports dynamics that are irrelevant to the post-war mortality decline. This is the convention of the applied literature, and it also equalises coverage across countries.</p>
+<h2 class="anchored" data-anchor-id="sec-data">Data and the discovery–confirmation split</h2>
+<p>We use single-age central death rates for ages 0–100 and years 1950–2019 from the Human Mortality Database. The <strong>discovery set</strong> comprises male mortality in six countries—England and Wales (labelled UK), France, Italy, Denmark, Canada, and Finland—and is the sole basis for every design choice reported below. The <strong>confirmation set</strong> comprises fourteen populations held out entirely until the design was frozen and the hypotheses of <a href="#sec-confirmation" class="quarto-xref">Section 5</a> pre-registered: the female series of those same six countries, and both the male and female series of Australia, Switzerland, Norway, and Sweden. The two sets share no population. Splitting confirmation from discovery this way converts what would otherwise be the study’s principal weakness—design choices made with knowledge of the results—into a strength, at the cost of holding back four-fifths of the available data from the exploratory phase.</p>
+<p>Zero cells at the highest ages in the smaller populations, which denote absent exposure, are carried forward along the year axis before taking logarithms; we verify directly (<a href="#sec-limits" class="quarto-xref">Section 6.4</a>) that this imputation never transfers a test-year value into a training-year cell. The sample begins in 1950 deliberately: earlier records contain the two world wars, the 1918 influenza pandemic, and changing data-quality regimes, and training a trend-following forecaster on war-shock years imports dynamics irrelevant to the post-war mortality decline. This is the convention of the applied literature, and it equalises coverage across countries.</p>
 </section>
 <section id="sec-design" class="level2">
 <h2 class="anchored" data-anchor-id="sec-design">Two splits and two protocols</h2>
@@ -2516,8 +2520,9 @@ D = \text{diag}\left( \phi(Q)\, \phi(K)^\top \mathbf{1}_s \right),
 <p>of <span class="citation" data-cites="li2017coherent">Li and Lu (<a href="#ref-li2017coherent" role="doc-biblioref">2017</a>)</span>.</p>
 </section>
 </section>
-<section id="results" class="level1">
-<h1>Results</h1>
+<section id="results-on-the-discovery-set" class="level1">
+<h1>Results on the discovery set</h1>
+<p>The results in this section are obtained on the six discovery populations and were used to develop every design choice and to form the hypotheses tested in <a href="#sec-confirmation" class="quarto-xref">Section 5</a>. They should be read as exploratory; their out-of-sample replication is the subject of the following section.</p>
 <section id="sec-train" class="level2">
 <h2 class="anchored" data-anchor-id="sec-train">In-sample fit</h2>
 <p><a href="#tbl-train" class="quarto-xref">Table 1</a> reports training-period RMSE for the three networks on the primary (extended) split; the benchmark split behaves identically and is tabulated in the repository. The clearest in-sample fact concerns the Performer: it achieves the lowest training RMSE of the three networks in all six countries on the extended split, and in eleven of the twelve country–split cells overall (the exception is the United Kingdom on the benchmark split, where the LSTM leads). The margins are a few per cent, but their consistency across countries, splits, and seeds shows that the random-feature attention, far from impairing the fit, mildly improves it. The training-loss curves (<a href="#fig-loss" class="quarto-xref">Figure 1</a>) descend smoothly to a common plateau for all three architectures; the FAVOR+ approximation does not destabilise optimisation at this scale.</p>
@@ -2734,12 +2739,14 @@ Table 3: Test RMSE, benchmark split (test 2001–2019, recursive protocol), mea
 </figcaption>
 </figure>
 </div>
-<p>The contrast between the two tables is the paper’s most consequential empirical fact. On the benchmark split the classical model dominates without qualification: Lee–Carter has the lowest RMSE in all six countries, and the best network trails it by between 4.6 per cent (Denmark) and 65 per cent (United Kingdom), with 31–45 per cent typical. On the extended split—nine more training years, nine fewer forecast years—the picture changes qualitatively. The networks’ errors fall by roughly 40 per cent while Lee–Carter’s fall by roughly 15, and the ranking tightens to the point of overturning in half the countries: the LSTM records the lowest RMSE in Italy (<span class="math inline">\(-2.0\)</span> per cent relative to LC), Denmark (<span class="math inline">\(-4.3\)</span> per cent, where all three networks beat the classical model), and Canada (a dead heat at <span class="math inline">\(-0.3\)</span> per cent, well inside seed noise), while Lee–Carter keeps a clear lead only in the United Kingdom, France, and Finland.</p>
+<p>The contrast between the two tables is the paper’s most consequential empirical fact. On the benchmark split the classical model dominates without qualification: Lee–Carter has the lowest RMSE in all six countries, and the best network trails it by between 4.6 per cent (Denmark) and 65 per cent (United Kingdom), with 31–45 per cent typical. On the extended split—nine more training years, nine fewer forecast years—the picture changes qualitatively. The networks’ errors fall by roughly 40 per cent while Lee–Carter’s fall by roughly 15, and the point-estimate ranking inverts in half the countries: the LSTM records the lowest RMSE in Italy (<span class="math inline">\(-2.0\)</span> per cent relative to LC), Denmark (<span class="math inline">\(-4.3\)</span> per cent, where all three networks sit below the classical model), and Canada (a dead heat at <span class="math inline">\(-0.3\)</span> per cent, well inside seed noise).</p>
+<p>Formal testing keeps the score honest. Applying a Diebold–Mariano-style one-sample test to the ten annual mean-squared-error differentials between the LSTM and Lee–Carter, the classical model’s extended-split wins in the United Kingdom (<span class="math inline">\(p = 0.002\)</span>) and Finland (<span class="math inline">\(p = 0.001\)</span>) are statistically significant, while none of the networks’ point-estimate wins is: Italy gives <span class="math inline">\(p = 0.62\)</span>, Denmark <span class="math inline">\(p = 0.09\)</span>, and Canada <span class="math inline">\(p = 0.93\)</span> (France, <span class="math inline">\(p = 0.07\)</span>, leans to Lee–Carter). With ten annual observations the test is indicative rather than sharp, but the asymmetry is clear. The correct summary of the extended split is therefore not that the networks overtake the classical model; it is that they pull statistically level with it in four of six countries, having trailed it significantly—by 31 to 65 per cent—on the benchmark split.</p>
 <p>Two qualifications discipline the headline. First, the networks’ extended-split wins are strongest on RMSE: on mean absolute error Lee–Carter still leads in five of the six countries (Denmark is the exception), which says the networks’ advantage comes from trimming the largest errors—predominantly at young ages, as <a href="#sec-structure" class="quarto-xref">Section 4.4</a> shows—rather than from a uniformly better fit. Second, within the network family the ordering is stable across both splits: the LSTM leads everywhere it matters, and the attention models sit behind it in ten of twelve country–split cells (the exception is France on the extended split, where all three networks are within 0.003 of one another).</p>
 </section>
 <section id="sec-pf-vs-tf" class="level2">
 <h2 class="anchored" data-anchor-id="sec-pf-vs-tf">Performer versus Transformer</h2>
-<p>The matched pair in the last two columns of the test tables isolates the effect of replacing exact softmax attention with the FAVOR+ approximation, all else equal. On the benchmark split the Performer’s mean RMSE is lower in five of six countries (by 0.002 to 0.018; France is the exception at 0.004 higher). On the extended split the two are statistically inseparable: the Performer is ahead in the United Kingdom, Italy, and Denmark, behind by 0.0016 in Canada and 0.0007 in Finland—margins far inside one standard deviation—and behind by 0.0025 in France. Across all twelve cells the Performer wins eight, and its run-to-run standard deviation is smaller than the Transformer’s in every single cell, often by a third (Denmark, benchmark split: 0.024 against 0.041). Combined with the in-sample result—best network in eleven of twelve cells—the evidence supports a measured conclusion: at this data scale the random-feature approximation acts as a mild variance-reducing regulariser. It never behaves as a lossy shortcut, and equally it never rescues the attention architecture from the LSTM, which beats both attention models in every cell where the comparison matters.</p>
+<p>The matched pair in the last two columns of the test tables isolates the effect of replacing exact softmax attention with the FAVOR+ approximation, all else equal. On the benchmark split the Performer’s mean RMSE is lower in five of six countries (by 0.002 to 0.018; France is the exception at 0.004 higher); on the extended split it is ahead in three and behind in three, with three of those margins under 0.003. Because the runs share seeds, the comparison admits a paired test, and the paired verdict is the honest one: across the twelve country–split cells, exactly one paired-by-seed <span class="math inline">\(t\)</span>-test reaches significance at the 5 per cent level (Finland on the benchmark split, in the Performer’s favour)—no more than the false-positive rate would produce. Out of sample, the two attention models are statistically indistinguishable.</p>
+<p>Two descriptive regularities nonetheless survive intact and point the same way. The Performer’s run-to-run standard deviation is smaller than the Transformer’s in all twelve cells, often by a third (Denmark, benchmark split: 0.024 against 0.041), and it achieves the best in-sample fit of the three networks in eleven of twelve cells. The measured conclusion is that the random-feature approximation acts as a mild variance-reducing regulariser: it costs nothing in accuracy, buys reproducibility across seeds, and never behaves as a lossy shortcut. Equally, it never rescues the attention architecture from the LSTM, which sits at or above both attention models throughout.</p>
 <p>The computational case for the Performer is absent at these dimensions, and honesty requires saying so: with ten-year windows the fixed overhead of the feature maps makes our Performer roughly a third slower than our Transformer in wall-clock terms, because the linear-versus-quadratic crossover lies far beyond <span class="math inline">\(s = 10\)</span>. The case for the Performer in actuarial work is therefore statistical at present; it would become computational in settings with genuinely long sequences, such as monthly surveillance series or multi-population models over concatenated histories.</p>
 </section>
 <section id="sec-structure" class="level2">
@@ -2851,14 +2858,401 @@ Table 4: Test RMSE under the two forecasting protocols, extended split. Under t
 </figure>
 </div>
 <p>The protocol experiment resolves the extended-split ambiguity decisively in the classical model’s favour. Handing the networks the observed recent history barely moves them: the Performer changes by at most 0.009 and worsens in four of six countries, and the LSTM improves by at most 0.010 (its rolling best, 0.1855 in Canada, remains 20 per cent behind rolling Lee–Carter). The identical information reduces Lee–Carter’s RMSE by 6 to 23 per cent on this split—and by 14 to 46 per cent on the benchmark split, where the same asymmetry holds. The interpretation is the same as in our replication study: the networks’ residual error lives in the learned one-step mapping, not in the inputs, so fresh data cannot repair it, whereas Lee–Carter converts fresh data directly into an updated drift estimate.</p>
-<p>The consequence is that the strongest practical claim survives both splits and both protocols intact: <strong>annually refitted Lee–Carter beats every network, under every protocol, in every country, on both splits</strong>—its extended-split error is 15 to 32 per cent below that of the best network in its best configuration. The networks’ recursive-mode wins in Italy, Denmark, and Canada are wins against a straw man: a Lee–Carter model frozen for a decade. Against the classical model as actually used, with its trivial annual refit, no neural configuration tested here comes close.</p>
+<p>Against networks with frozen weights, then, annually refitted Lee–Carter is undefeated: its extended-split error is 15 to 32 per cent below that of the best frozen network in its best configuration. But this comparison contains an asymmetry of its own—one model is being maintained while the other is not—and removing it reverses the verdict.</p>
 </section>
+<section id="sec-retrained" class="level2">
+<h2 class="anchored" data-anchor-id="sec-retrained">The fair rolling comparison: retraining annually</h2>
+<p><a href="#tbl-retrained" class="quarto-xref">Table 5</a> completes the design. Here the LSTM is granted exactly the maintenance that rolling Lee–Carter enjoys: for each test year it is retrained from scratch on all data through the preceding year (standardisation refit on the same expanded window), then makes a one-step-ahead forecast—six countries, ten seeds, ten test years, six hundred trainings.</p>
+<div id="tbl-retrained" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-tbl figure">
+<div aria-describedby="tbl-retrained-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<table class="table">
+<colgroup>
+<col style="width: 12%">
+<col style="width: 26%">
+<col style="width: 30%">
+<col style="width: 30%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Country</th>
+<th style="text-align: right;">LC, rolling refit</th>
+<th style="text-align: right;">LSTM, frozen weights</th>
+<th style="text-align: right;">LSTM, annual retrain</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">UK</td>
+<td style="text-align: right;">0.1294</td>
+<td style="text-align: right;">0.1908</td>
+<td style="text-align: right;"><strong>0.1149</strong> (0.0011)</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">France</td>
+<td style="text-align: right;">0.1517</td>
+<td style="text-align: right;">0.2033</td>
+<td style="text-align: right;"><strong>0.1199</strong> (0.0011)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Italy</td>
+<td style="text-align: right;">0.1979</td>
+<td style="text-align: right;">0.2383</td>
+<td style="text-align: right;"><strong>0.1389</strong> (0.0017)</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Denmark</td>
+<td style="text-align: right;">0.3362</td>
+<td style="text-align: right;">0.3974</td>
+<td style="text-align: right;"><strong>0.3031</strong> (0.0015)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Canada</td>
+<td style="text-align: right;">0.1544</td>
+<td style="text-align: right;">0.1855</td>
+<td style="text-align: right;"><strong>0.1374</strong> (0.0019)</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Finland</td>
+<td style="text-align: right;"><strong>0.2810</strong></td>
+<td style="text-align: right;">0.3682</td>
+<td style="text-align: right;">0.2812 (0.0026)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-tbl" id="tbl-retrained-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Table 5: Rolling one-step-ahead test RMSE, extended split (2010–2019). All three columns use the identical expanding information set at each test year; the columns differ only in whether the model’s parameters are re-estimated annually. Bold marks the best value per row.
+</figcaption>
+</figure>
+</div>
+<p>The annually retrained LSTM beats the annually refitted Lee–Carter in five of six countries, by 10 per cent (Denmark) to 30 per cent (Italy), and ties it in Finland; the margins are an order of magnitude larger than the seed standard deviations and point the same way everywhere. The contrast with the frozen-weights column is the sharpest fact in the study: identical architecture, identical information at forecast time, and a 24 to 42 per cent error reduction purely from re-estimating the weights each year. We retrained only the LSTM—the strongest network, so the most informative test case—and did not formally test the ten annual loss differentials for this arm; given margins of this size and sign-consistency across all six countries, we regard the direction as established and the exact magnitudes as the estimates.</p>
+<p>The complete picture is therefore a two-by-two, not a horse race. Frozen models pushed far ahead: Lee–Carter wins decisively (the benchmark split). Frozen models pushed a decade ahead: statistical parity (the extended split, recursive). Maintained models, one step ahead: the network wins (this section), because one-step-ahead prediction with current parameters is an interpolation problem, and interpolation is what empirical risk minimisation is good at. What the network buys with its annual retrain—age-specific dynamics beyond Lee–Carter’s rank-one structure—finally becomes usable. The price is computational and operational: an annual Lee–Carter refit costs a second and is transparent to a regulator; an annual retraining programme across a book of populations costs minutes per population per seed and produces a model whose year-on-year revisions are harder to explain.</p>
+</section>
+</section>
+<section id="sec-confirmation" class="level1">
+<h1>Confirmation on held-out populations</h1>
+<p>The section above is exploratory: the extended split, the protocols, and the retraining arm were all designed with the discovery-set results in view. To test whether its conclusions are properties of the model classes or artefacts of that design, we pre-registered five hypotheses—recorded in the repository before the confirmation set was touched—and evaluated them, with every setting frozen, on the fourteen held-out populations. <a href="#tbl-hypotheses" class="quarto-xref">Table 6</a> states each hypothesis, its pre-declared threshold, and its verdict.</p>
+<div id="tbl-hypotheses" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-tbl figure">
+<div aria-describedby="tbl-hypotheses-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<table class="table">
+<colgroup>
+<col style="width: 5%">
+<col style="width: 46%">
+<col style="width: 18%">
+<col style="width: 13%">
+<col style="width: 15%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">#</th>
+<th style="text-align: left;">Pre-registered hypothesis</th>
+<th style="text-align: left;">Threshold</th>
+<th style="text-align: left;">Result</th>
+<th style="text-align: left;">Verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">H1</td>
+<td style="text-align: left;">Lee–Carter beats every frozen network, benchmark split</td>
+<td style="text-align: left;">≥12/14</td>
+<td style="text-align: left;">14/14</td>
+<td style="text-align: left;">Supported</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">H2</td>
+<td style="text-align: left;">Best frozen network within 10% of LC, extended split</td>
+<td style="text-align: left;">≥7/14</td>
+<td style="text-align: left;">7/14</td>
+<td style="text-align: left;">Supported (marginal)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">H3</td>
+<td style="text-align: left;">Retrained LSTM beats rolling LC, extended split</td>
+<td style="text-align: left;">≥9/14</td>
+<td style="text-align: left;">9/14</td>
+<td style="text-align: left;">Supported (marginal)</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">H4a</td>
+<td style="text-align: left;">Performer <span class="math inline">\(\approx\)</span> Transformer (paired test n.s.)</td>
+<td style="text-align: left;">≥10/14 each split</td>
+<td style="text-align: left;">13, 14/14</td>
+<td style="text-align: left;">Supported</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">H4b</td>
+<td style="text-align: left;">Performer seed variance below Transformer</td>
+<td style="text-align: left;">≥10/14 each split</td>
+<td style="text-align: left;">9, 11/14</td>
+<td style="text-align: left;">Partial: fails benchmark split</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">H5</td>
+<td style="text-align: left;">Performer best in-sample network, extended split</td>
+<td style="text-align: left;">≥9/14</td>
+<td style="text-align: left;">10/14</td>
+<td style="text-align: left;">Supported</td>
+</tr>
+</tbody>
+</table>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-tbl" id="tbl-hypotheses-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Table 6: Pre-registered hypotheses and their confirmation-set verdicts. Thresholds and directions were fixed before the confirmation data were examined.
+</figcaption>
+</figure>
+</div>
+<p>The long-horizon dominance of the classical model (H1) is beyond dispute: across the fourteen held-out populations and both discovery-set tables, Lee–Carter has the lowest benchmark-split error in all twenty. The horizon effect (H2) also replicates in direction and magnitude—the median deficit of the best network over Lee–Carter falls from <span class="math inline">\(+27\)</span> per cent on the benchmark split to <span class="math inline">\(+8\)</span> per cent on the extended split—but the confirmation set is more sober than the discovery set about what that shrinkage means. <a href="#tbl-conf-recursive" class="quarto-xref">Table 7</a> shows that a frozen network actually overtakes a frozen Lee–Carter in only two of the fourteen held-out populations (Canada female, Norway male), against three of six in discovery. The honest reading is that shortening the horizon brings the networks level with the classical model, not ahead of it; the discovery set’s point-estimate wins were on the optimistic side of a distribution whose held-out centre is a small classical lead.</p>
+<div id="tbl-conf-recursive" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-tbl figure">
+<div aria-describedby="tbl-conf-recursive-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Population</th>
+<th style="text-align: right;">LC</th>
+<th style="text-align: right;">LSTM</th>
+<th style="text-align: right;">Transformer</th>
+<th style="text-align: right;">Performer</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">UK F</td>
+<td style="text-align: right;"><strong>0.1438</strong></td>
+<td style="text-align: right;">0.1790</td>
+<td style="text-align: right;">0.1881</td>
+<td style="text-align: right;">0.1880</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">France F</td>
+<td style="text-align: right;"><strong>0.1678</strong></td>
+<td style="text-align: right;">0.1891</td>
+<td style="text-align: right;">0.1969</td>
+<td style="text-align: right;">0.1938</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Italy F</td>
+<td style="text-align: right;"><strong>0.1549</strong></td>
+<td style="text-align: right;">0.2020</td>
+<td style="text-align: right;">0.2235</td>
+<td style="text-align: right;">0.2186</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Denmark F</td>
+<td style="text-align: right;"><strong>0.3814</strong></td>
+<td style="text-align: right;">0.4082</td>
+<td style="text-align: right;">0.4280</td>
+<td style="text-align: right;">0.4248</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Canada F</td>
+<td style="text-align: right;">0.1956</td>
+<td style="text-align: right;"><strong>0.1717</strong></td>
+<td style="text-align: right;">0.1789</td>
+<td style="text-align: right;">0.1781</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Finland F</td>
+<td style="text-align: right;"><strong>0.3345</strong></td>
+<td style="text-align: right;">0.3544</td>
+<td style="text-align: right;">0.3682</td>
+<td style="text-align: right;">0.3635</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Australia M</td>
+<td style="text-align: right;"><strong>0.1972</strong></td>
+<td style="text-align: right;">0.2201</td>
+<td style="text-align: right;">0.2362</td>
+<td style="text-align: right;">0.2415</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Australia F</td>
+<td style="text-align: right;"><strong>0.2044</strong></td>
+<td style="text-align: right;">0.2408</td>
+<td style="text-align: right;">0.2491</td>
+<td style="text-align: right;">0.2504</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Switzerland M</td>
+<td style="text-align: right;"><strong>0.3113</strong></td>
+<td style="text-align: right;">0.3414</td>
+<td style="text-align: right;">0.3573</td>
+<td style="text-align: right;">0.3598</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Switzerland F</td>
+<td style="text-align: right;"><strong>0.3734</strong></td>
+<td style="text-align: right;">0.3947</td>
+<td style="text-align: right;">0.3962</td>
+<td style="text-align: right;">0.3990</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Norway M</td>
+<td style="text-align: right;">0.3541</td>
+<td style="text-align: right;"><strong>0.3476</strong></td>
+<td style="text-align: right;">0.3611</td>
+<td style="text-align: right;">0.3600</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Norway F</td>
+<td style="text-align: right;"><strong>0.3376</strong></td>
+<td style="text-align: right;">0.3736</td>
+<td style="text-align: right;">0.3852</td>
+<td style="text-align: right;">0.3813</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Sweden M</td>
+<td style="text-align: right;"><strong>0.2883</strong></td>
+<td style="text-align: right;">0.2929</td>
+<td style="text-align: right;">0.3003</td>
+<td style="text-align: right;">0.3016</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Sweden F</td>
+<td style="text-align: right;"><strong>0.2875</strong></td>
+<td style="text-align: right;">0.2941</td>
+<td style="text-align: right;">0.2947</td>
+<td style="text-align: right;">0.2947</td>
+</tr>
+</tbody>
+</table>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-tbl" id="tbl-conf-recursive-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Table 7: Extended-split recursive test RMSE on the fourteen confirmation populations, mean over ten runs. Bold marks the best model per population. Lee–Carter leads in twelve of fourteen.
+</figcaption>
+</figure>
+</div>
+<p>The maintenance finding (H3), by contrast, is the study’s most robust result, and the confirmation set strengthens rather than tempers it. <a href="#tbl-conf-retrained" class="quarto-xref">Table 8</a> gives the annual-retraining arm on all fourteen held-out populations, now with the formal Diebold–Mariano test that the discovery-set arm lacked. The annually retrained LSTM lowers RMSE against rolling Lee–Carter in nine of fourteen populations, the improvement is significant at the 5 per cent level in eight, and in no population is the network significantly worse—the five non-wins are statistical ties, with per-year differentials indistinguishable from zero. Adding the discovery set, where the retrained LSTM’s point estimate is lower in five of six populations, the maintained LSTM is the more accurate one-step forecaster in fourteen of twenty populations and statistically tied in the rest. The one population where its point estimate is clearly worse is Italian female mortality, the smoothest series in the sample and the one where Lee–Carter’s rank-one structure is hardest to improve upon; even there the difference is not significant (<span class="math inline">\(p = 0.11\)</span>). We did not retain per-year losses for the discovery-set retraining arm and so report a formal test only for the held-out populations.</p>
+<div id="tbl-conf-retrained" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-tbl figure">
+<div aria-describedby="tbl-conf-retrained-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Population</th>
+<th style="text-align: right;">LC rolling</th>
+<th style="text-align: right;">LSTM retrained</th>
+<th style="text-align: right;">Change</th>
+<th style="text-align: right;">DM <span class="math inline">\(p\)</span></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">UK F</td>
+<td style="text-align: right;">0.1260</td>
+<td style="text-align: right;">0.1186</td>
+<td style="text-align: right;"><span class="math inline">\(-5.8\%\)</span></td>
+<td style="text-align: right;">0.019</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">France F</td>
+<td style="text-align: right;">0.1400</td>
+<td style="text-align: right;">0.1218</td>
+<td style="text-align: right;"><span class="math inline">\(-13.0\%\)</span></td>
+<td style="text-align: right;">0.000</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Italy F</td>
+<td style="text-align: right;">0.1392</td>
+<td style="text-align: right;">0.1477</td>
+<td style="text-align: right;"><span class="math inline">\(+6.1\%\)</span></td>
+<td style="text-align: right;">0.114</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Denmark F</td>
+<td style="text-align: right;">0.3409</td>
+<td style="text-align: right;">0.3337</td>
+<td style="text-align: right;"><span class="math inline">\(-2.1\%\)</span></td>
+<td style="text-align: right;">0.149</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Canada F</td>
+<td style="text-align: right;">0.1539</td>
+<td style="text-align: right;">0.1424</td>
+<td style="text-align: right;"><span class="math inline">\(-7.5\%\)</span></td>
+<td style="text-align: right;">0.012</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Finland F</td>
+<td style="text-align: right;">0.3218</td>
+<td style="text-align: right;">0.3253</td>
+<td style="text-align: right;"><span class="math inline">\(+1.1\%\)</span></td>
+<td style="text-align: right;">0.583</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Australia M</td>
+<td style="text-align: right;">0.1693</td>
+<td style="text-align: right;">0.1514</td>
+<td style="text-align: right;"><span class="math inline">\(-10.6\%\)</span></td>
+<td style="text-align: right;">0.000</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Australia F</td>
+<td style="text-align: right;">0.2000</td>
+<td style="text-align: right;">0.2000</td>
+<td style="text-align: right;"><span class="math inline">\(+0.0\%\)</span></td>
+<td style="text-align: right;">0.993</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Switzerland M</td>
+<td style="text-align: right;">0.2791</td>
+<td style="text-align: right;">0.2575</td>
+<td style="text-align: right;"><span class="math inline">\(-7.7\%\)</span></td>
+<td style="text-align: right;">0.016</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Switzerland F</td>
+<td style="text-align: right;">0.3440</td>
+<td style="text-align: right;">0.3320</td>
+<td style="text-align: right;"><span class="math inline">\(-3.5\%\)</span></td>
+<td style="text-align: right;">0.009</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Norway M</td>
+<td style="text-align: right;">0.3111</td>
+<td style="text-align: right;">0.2788</td>
+<td style="text-align: right;"><span class="math inline">\(-10.4\%\)</span></td>
+<td style="text-align: right;">0.001</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Norway F</td>
+<td style="text-align: right;">0.3195</td>
+<td style="text-align: right;">0.3252</td>
+<td style="text-align: right;"><span class="math inline">\(+1.8\%\)</span></td>
+<td style="text-align: right;">0.477</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Sweden M</td>
+<td style="text-align: right;">0.2531</td>
+<td style="text-align: right;">0.2394</td>
+<td style="text-align: right;"><span class="math inline">\(-5.4\%\)</span></td>
+<td style="text-align: right;">0.005</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Sweden F</td>
+<td style="text-align: right;">0.2662</td>
+<td style="text-align: right;">0.2666</td>
+<td style="text-align: right;"><span class="math inline">\(+0.2\%\)</span></td>
+<td style="text-align: right;">0.834</td>
+</tr>
+</tbody>
+</table>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-tbl" id="tbl-conf-retrained-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Table 8: Annual-retraining arm on the confirmation set: rolling one-step RMSE of refitted Lee–Carter against the annually retrained LSTM, extended split. The <span class="math inline">\(p\)</span>-value is a Diebold–Mariano one-sample test on ten annual loss differentials. Negative change favours the network.
+</figcaption>
+</figure>
+</div>
+<p>The Performer results carry over cleanly on accuracy and partially on variance. Its paired-by-seed accuracy difference from the Transformer is non-significant in thirteen of fourteen benchmark-split cells and all fourteen extended-split cells (H4a), and it is the best in-sample network in ten of fourteen (H5)—both as pre-registered. The one qualified claim is H4b: the Performer’s seed variance is lower than the Transformer’s in eleven of fourteen populations on the extended split but only nine of fourteen on the benchmark split, just short of the pre-declared threshold. We therefore report the variance advantage as real but split-dependent rather than universal. No confirmation-set result overturns a discovery-set conclusion; one secondary claim is narrowed, and the central ones stand.</p>
 </section>
 <section id="discussion" class="level1">
 <h1>Discussion</h1>
 <section id="sec-why" class="level2">
 <h2 class="anchored" data-anchor-id="sec-why">The binding constraint is extrapolation distance</h2>
-<p>Read together, the two splits locate the networks’ weakness precisely. It is not capacity: in-sample, all three networks fit the data as well as their out-of-sample winner fits its. It is not information: handing them observed test data barely moves their errors. It is the distance they are asked to extrapolate beyond the support of their training data. Over nineteen recursive years the standardised inputs drift far below anything seen in training, the networks’ outputs regress toward training-period levels, and they lose to a frozen Lee–Carter by 30–65 per cent. Over ten years the drift is modest, the regression bias small, and the same architectures pull level with—in Denmark, ahead of—the frozen classical model. A network’s effective forecast range appears to be a property of its training distribution, not of its architecture: no amount of attention engineering moved it, and nine additional training years covering the improvement slowdown moved it substantially.</p>
+<p>Read together, the experiments locate the networks’ weakness precisely. It is not capacity: in-sample, all three networks fit the data as well as their out-of-sample winner fits its. It is not information: handing frozen networks observed test data barely moves their errors. It is the distance they are asked to extrapolate beyond the support of their training data, with the parameters they last learned. Over nineteen recursive years the standardised inputs drift far below anything seen in training, the networks’ outputs regress toward training-period levels, and they lose to a frozen Lee–Carter by 30–65 per cent. Over ten years the drift is modest and the same architectures pull statistically level. At one step ahead, with parameters re-estimated on all data to date, extrapolation is no longer being asked of them at all—and they win. The three regimes trace a single monotone relationship between extrapolation distance and the classical model’s advantage, which passes through zero somewhere inside the decade horizon. A network’s effective forecast range appears to be a property of its training distribution, not of its architecture: no amount of attention engineering moved it, and nine additional training years covering the improvement slowdown moved it substantially.</p>
 <p>The age decomposition sharpens the point into something actuarially useful. Lee–Carter’s constant drift is an asset exactly where mortality decline has been steady (old ages) and a liability where the decline has hit a floor (infancy); the networks’ data-driven flexibility is the reverse. The two model families fail in complementary places, which is the classic precondition for combination—whether by age-blending forecasts, by hybrid designs that let a neural network forecast the Lee–Carter index <span class="citation" data-cites="nigri2019deep">(<a href="#ref-nigri2019deep" role="doc-biblioref">Nigri et al. 2019</a>)</span>, or by multi-population architectures with structural trend components <span class="citation" data-cites="perla2021timeseries">(<a href="#ref-perla2021timeseries" role="doc-biblioref">Perla et al. 2021</a>)</span>. Our results suggest such combinations, rather than head-to-head replacement, are where the practical gains lie.</p>
 </section>
 <section id="sec-pf-contribution" class="level2">
@@ -2867,21 +3261,22 @@ Table 4: Test RMSE under the two forecasting protocols, extended split. Under t
 </section>
 <section id="sec-practice" class="level2">
 <h2 class="anchored" data-anchor-id="sec-practice">Implications for practice</h2>
-<p>Three operational lessons follow. First, the comparison that matters is against Lee–Carter <em>as actually used</em>. The networks’ extended-split wins evaporate against an annually refitted classical model, which costs seconds to update and leads everywhere; deep learning claims benchmarked against a decade-frozen Lee–Carter overstate their practical relevance. Second, the evaluation design can decide the result before any model is trained: moving the split boundary by nine years flipped the recursive-mode winner in three of six countries. Forecasting studies should therefore report multiple horizons, explicit information sets, and multi-seed dispersion as a matter of course. Third, where deep models are deployed for short-horizon work, our evidence favours the LSTM over both attention architectures at this data scale, with the Performer preferable to the Transformer if an attention model is required, on stability grounds.</p>
+<p>Three operational lessons follow. First, symmetry of maintenance is the precondition for a meaningful comparison, in both directions. Deep learning claims benchmarked against a decade-frozen Lee–Carter overstate their case—and classical-superiority claims benchmarked against frozen networks, including the one we ourselves would have published without the retraining experiment, overstate theirs. Under matched annual re-estimation the LSTM is the more accurate one-step forecaster in five of six countries; under matched freezing, Lee–Carter is the better long-horizon extrapolator. Which regime is relevant depends on the valuation task, and the choice between them is then a trade-off of accuracy against cost, auditability, and the stability of year-on-year revisions, where the classical model retains real advantages. Second, the evaluation design can decide the result before any model is trained: moving the split boundary by nine years turned a classical lead that was significant everywhere into one that is statistically undetectable in four of six countries. Forecasting studies should therefore report multiple horizons, explicit information sets, formal loss-differential tests, and multi-seed dispersion as a matter of course. Third, where deep models are deployed for short-horizon work, our evidence favours the LSTM over both attention architectures at this data scale, with the Performer preferable to the Transformer if an attention model is required, on stability grounds.</p>
 </section>
 <section id="sec-limits" class="level2">
 <h2 class="anchored" data-anchor-id="sec-limits">Limitations</h2>
-<p>We model male mortality in six developed countries; smoother total-population series may narrow the gaps further, and structurally disrupted mortality regimes may widen them. The window length, feature count (<span class="math inline">\(m = 48\)</span>, the <span class="math inline">\(d_k \ln d_k\)</span> guideline), and training regime are fixed, documented choices applied symmetrically rather than tuned per model; tuned versions of any model could shift the margins, though the in-sample near-parity suggests not by much. Point forecasts are the sole object of study: none of the networks as configured produces the stochastic scenarios that reserving and solvency work require, a practical gap relative to the classical framework that our design does not measure. Finally, the test decade ends in 2019 by construction; none of these models has been asked about a pandemic.</p>
+<p>Four methodological caveats deserve the same prominence as the findings. First, the two splits are not independent evidence: the extended split was designed after the benchmark-split results were known, and its test decade (2010–2019) is a subset of the benchmark window (2001–2019). This is precisely why the design was frozen and its conclusions re-tested on the fourteen held-out populations of <a href="#sec-confirmation" class="quarto-xref">Section 5</a>; the horizon and maintenance findings survived that test, and the reader should weight the confirmation-set evidence accordingly and treat the discovery-set numbers as illustrative. Second, our dispersion measures understate total uncertainty: the seed standard deviations capture training stochasticity but not sampling variation over a ten-year test window, and the Diebold–Mariano tests rest on ten annual observations without a serial-correlation correction, so their <span class="math inline">\(p\)</span>-values are indicative rather than exact. Third, the zero-cell imputation was audited directly—across all twenty populations and both splits, no training-year cell is ever filled from a test-year observation—but the audit covers only this preprocessing step; standardisation and window construction are leakage-free by construction. Fourth, the mean absolute percentage error is computed on the log scale, inherited from the literature we compare against; because the denominator <span class="math inline">\(\lvert \ln m \rvert\)</span> shrinks at the oldest ages, the metric overweights them, and we treat it as tertiary.</p>
+<p>The remaining limitations are of scope. The annual-retraining arm covers the LSTM only; retrained attention models are untested, for compute reasons, so the maintenance finding is established for the recurrent architecture and merely conjectured for the attention family. We study ten developed countries with long, clean records and comparatively smooth mortality decline; structurally disrupted regimes—the post-Soviet transition, the United States opioid epidemic—may behave differently, and the sample is not globally representative. The window length, feature count (<span class="math inline">\(m = 48\)</span>, the <span class="math inline">\(d_k \ln d_k\)</span> guideline, not swept), and training regime are fixed, documented choices applied symmetrically rather than tuned per model. Point forecasts are the sole object of study: none of the networks as configured produces the stochastic scenarios that reserving and solvency work require, which remains the classical framework’s clearest practical advantage. Finally, the test decade ends in 2019 by construction; none of these models has been asked about a pandemic.</p>
 </section>
 </section>
 <section id="conclusion" class="level1">
 <h1>Conclusion</h1>
-<p>This paper introduced the Performer to mortality forecasting and benchmarked it, under strictly symmetric conditions, against an exactly parameter-matched Transformer, an LSTM, and the Lee–Carter model, across six countries, two train/test splits, two forecasting protocols, and ten seeds per network. The findings are three. The Performer works: FAVOR+ attention trains stably on small actuarial samples, delivers the best in-sample fit of any network in eleven of twelve settings, and matches the Transformer’s out-of-sample accuracy with uniformly lower seed variance—so efficient attention costs nothing statistically, even where it cannot yet pay computationally. The horizon governs the contest: lengthening training by nine years and shortening the forecast to ten flips the recursive-mode winner in half the countries, revealing that the networks’ true limitation is extrapolation distance rather than architecture. And the classical model, used as practitioners actually use it—refitted each year—remains undefeated in every cell of the experiment.</p>
-<p>The burden of proof therefore still rests with the neural newcomers, but this study narrows where the proof must come from: not from further refinement of the attention mechanism, which we have shown changes little, but from designs that give data-driven models a structural capacity to extrapolate—and from evaluations honest enough to compare them against a classical benchmark that is allowed to do the same.</p>
+<p>This paper introduced the Performer to mortality forecasting and benchmarked it, under strictly symmetric conditions, against an exactly parameter-matched Transformer, an LSTM, and the Lee–Carter model, then subjected its conclusions to a pre-registered test on fourteen held-out populations—twenty in all, across two splits, two protocols, a retraining regime, and ten seeds per network. The findings are three, and each was confirmed out of design. The Performer works: FAVOR+ attention trains stably on small actuarial samples, delivers the best in-sample fit of any network in ten of fourteen confirmation populations, and is statistically indistinguishable from the Transformer out of sample while varying less across seeds—so efficient attention costs nothing statistically, even where it cannot yet pay computationally. Extrapolation distance and maintenance, not architecture, govern the contest with the classical model: frozen networks lose to a frozen Lee–Carter everywhere at nineteen years and rarely overtake it even at ten, but the same LSTM granted an annual refit forecasts one year ahead more accurately than rolling Lee–Carter in fourteen of twenty populations and ties it in the rest, an improvement that is Diebold–Mariano-significant in eight of the fourteen populations where we test it formally and significantly reversed in none. And the attention refinements at the centre of the recent literature turn out to be the least consequential variable in the design: across every split, protocol, population, and maintenance regime, the ordering within the neural family barely moves, while the ordering between model classes swings entirely on the evaluation regime.</p>
+<p>The burden of proof in the deep-learning-for-mortality literature therefore needs restating rather than reassigning. Neural models do not need to beat Lee–Carter at trend extrapolation to earn a place; on this evidence they should not be expected to, and when maintained as classical models are maintained they already forecast more accurately at short horizons. What they still owe is everything that surrounds the point forecast: uncertainty quantification, auditability, stable revisions, and evaluations—like the matched-maintenance design used here—honest enough to show where each model class actually earns its keep.</p>
 </section>
 <section id="reproducibility" class="level1 unnumbered">
 <h1 class="unnumbered">Reproducibility</h1>
-<p>Every number in this paper is generated by our own code from raw HMD records and regenerates exactly from fixed seeds. The pipeline is <code>run_experiment.py</code>; data preparation, the models (including the FAVOR+ implementation in <code>src/performer.py</code>), training, evaluation, and plotting live in <code>src/</code>; per-run and aggregated metrics are written to <code>outputs/results/</code> and figures to <code>outputs/figures/</code>. Running <code>python run_experiment.py --epochs 100 --runs 10</code> reproduces all tables and figures for both splits. The correctness of the FAVOR+ implementation is verified by a convergence test against exact softmax attention. HMD data are governed by the database’s user agreement and are not redistributed.</p>
+<p>Every number in this paper is generated by our own code from raw HMD records and regenerates exactly from fixed seeds. The discovery-set pipeline is <code>run_experiment.py</code> with its retraining arm <code>run_retrained_lstm.py</code>; the pre-registered confirmation run is <code>run_confirmation.py</code>, and the hypotheses it tests were committed to <code>HYPOTHESES.md</code> before that script was run. Data preparation, the models (including the FAVOR+ implementation in <code>src/performer.py</code>), training, evaluation, and plotting live in <code>src/</code>; per-run and aggregated metrics are written to <code>outputs/</code>. The correctness of the FAVOR+ implementation is verified by a convergence test against exact softmax attention, and the zero-cell imputation by a direct leakage audit; both are in the repository. HMD data are governed by the database’s user agreement and are not redistributed.</p>
 </section>
 <section id="references" class="level1 unnumbered">
 <h1 class="unnumbered">References</h1>
