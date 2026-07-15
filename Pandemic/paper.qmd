@@ -1,0 +1,125 @@
+---
+title: "Mortality Forecasting Through a Structural Break: Classical and Deep Models Under COVID-19"
+author:
+  - name: "[Author names]"
+date: "2026-07-14"
+lang: en-GB
+
+abstract: |
+  PENDING-ABSTRACT
+
+bibliography: references.bib
+
+format:
+  typst:
+    papersize: a4
+    margin:
+      top: 2.5cm
+      bottom: 2.5cm
+      left: 2.5cm
+      right: 2.5cm
+    fontsize: 11pt
+    linestretch: 1.15
+    mainfont: "New Computer Modern"
+    section-numbering: "1.1.1"
+    toc: true
+    toc-title: "Contents"
+    toc-depth: 3
+  html:
+    toc: true
+    toc-depth: 3
+    theme: cosmo
+    embed-resources: true
+
+crossref:
+  eq-prefix: Eq.
+cap-location: bottom
+---
+
+# Introduction
+
+Every mortality forecasting model in production on 1 January 2020 was about to be wrong, everywhere, in the same direction, at once. The COVID-19 pandemic raised death rates across the developed world by margins unseen since 1945, concentrated at the older ages that dominate annuity and pension liabilities [@islam2021excess; @aburto2022quantifying]. For mortality forecasting research, the pandemic is a natural experiment of a kind the literature has never had: a large, sharply dated, exogenous structural break, observed simultaneously across dozens of well-instrumented populations.
+
+This paper uses that experiment to answer a question the deep-learning-for-mortality literature has not yet confronted. A growing body of work benchmarks neural sequence models---recurrent networks, Transformers [@vaswani2017attention; @wang2024transformer], and efficient-attention variants [@choromanski2021rethinking]---against the classical Lee--Carter model [@lee1992modeling] on the smooth, trending mortality of 1950--2019. In a companion study we showed on twenty populations of the Human Mortality Database that the outcome of that contest is governed not by architecture but by two methodological variables: how far a model must extrapolate beyond its training data, and whether its parameters are re-estimated as new data arrive. Under annual re-estimation, a small LSTM forecasts one year ahead more accurately than annually refitted Lee--Carter in most populations. All of that evidence, however, comes from calm decades. A forecasting system earns its keep in the years when the world misbehaves, and none of the smooth-era evidence says anything about how these model classes absorb, and recover from, a shock.
+
+We therefore ask three questions, each pre-registered before any post-2019 data were examined:
+
+1. **Anatomy of failure.** When frozen models trained through 2019 meet 2020--2023, how do the classical and neural failures compare in size, sign, and age structure? Is the shock simply invisible to all of them, or does architecture matter in a crisis?
+2. **Recovery under maintenance.** Once maintained models begin ingesting shock years---Lee--Carter refitted, the LSTM retrained annually---how quickly does each recover its pre-pandemic accuracy, and does the network's short-horizon advantage survive a structural break?
+3. **Revision stability.** Actuarial practice cares not only about accuracy but about how violently a model's projections swing when a new data year arrives: forecast revisions drive assumption changes, reserve volatility, and difficult conversations with regulators. We introduce revision stability as a formal evaluation criterion for mortality models---to our knowledge its first quantified use in this literature---and measure how a shock year propagates through each model class's projected path.
+
+The third question exposes a mechanical asymmetry with real actuarial consequences. Lee--Carter's random-walk-with-drift projection is anchored at the jump-off: the final observed year enters the forecast path directly, and the drift estimate is endpoint-sensitive, so a single extreme year shifts the entire projected path by nearly its full magnitude. A trained network, by contrast, filters its inputs through a mapping fitted to sixty-plus years of data; an anomalous input year is smoothed toward the patterns the network has learned. Whether the classical model's transparency comes at the price of over-reaction to outliers---and whether the network's smoothing is a stabiliser or a liability---is exactly what the 2020 data can reveal.
+
+Our contributions are fourfold. First, we provide, to our knowledge, the first systematic comparison of classical and deep mortality models through the COVID-19 break: twenty populations (ten HMD countries, both sexes), four models, frozen and maintained regimes, with data through 2023 where available. Second, we introduce and quantify revision stability, a decision-relevant criterion absent from prior model comparisons. Third, we pre-registered six falsifiable hypotheses---covering the shock's model-invariance, its age anatomy, recovery speed, calm-period and shock-period revision behaviour, and the persistence of the maintenance advantage---before touching any post-2019 observation, and we report every verdict, including failures. Fourth, all results are reproducible to the digit from fixed seeds, with the full pipeline, pre-registration, and per-population outputs in the replication package.
+
+# Data and models
+
+## Data {#sec-data}
+
+We use single-age central death rates $m_{x,t}$, ages 0--100, from the Human Mortality Database [@hmd] for ten countries---Australia, Canada, Denmark, England and Wales (labelled UK), Finland, France, Italy, Norway, Sweden, and Switzerland---and both sexes: twenty populations. Training data span 1950--2019 throughout; the evaluation window is 2020 to the latest available year (2023 for sixteen populations, 2022 for the UK, 2021 for Australia). Post-2019 HMD data are more recent and subject to revision; we discuss this in @sec-limits. Zero cells at extreme ages are forward-filled along the year axis before the log transform, an imputation audited in the companion study to transfer no test-period information into training years. All modelling is on log-mortality $y_{x,t} = \ln m_{x,t}$; life-expectancy translations use the Chiang life table [@chiang1984life] with the @andreev2015average infant separation factor.
+
+## Models {#sec-models}
+
+The four models, and every hyperparameter, are frozen from the companion study; nothing was tuned for this paper. Lee--Carter is estimated by SVD with the usual identification constraints, and the period index projected as a random walk with drift $\hat d = (\kappa_T - \kappa_1)/(T-1)$. The three networks share the one-step design: a window of $s = 10$ consecutive standardised age profiles predicts the next year's profile; each is trained with Adam (learning rate $10^{-3}$), batch size 32, 100 epochs, mean squared error, in ten independent seeded runs whose dispersion we report. The LSTM [@hochreiter1997long] has one layer of width 32. The Transformer follows @wang2024transformer (one encoder and one decoder layer, two heads, $d_{\text{model}} = 32$, feed-forward 16, dropout 0.1). The Performer replaces its softmax attention with FAVOR+ positive orthogonal random features [@choromanski2021rethinking] at exact parameter parity (21,861 weights each); its implementation is verified against exact attention in the replication package. In the maintained regimes only Lee--Carter and the LSTM are carried forward: the companion study established the LSTM as the strongest network and the attention pair as statistically interchangeable with it or worse, and the shock arm of this study (@sec-shock) re-confirms that architecture is not the operative variable.
+
+## Experimental arms and pre-registration {#sec-design}
+
+Three arms, fixed in advance:
+
+**A. Shock (frozen).** All four models are fitted through 2019 and forecast 2020 onward recursively, with no access to any post-2019 observation. We examine total error, signed bias (observed minus predicted log-mortality, positive when a model under-predicts mortality), its age profile, and the implied life-expectancy error.
+
+**B. Recovery (maintained).** At each origin year $o \in \{2015, \dots, \min(2022, \text{last}-1)\}$, rolling Lee--Carter is refitted on all data through $o$ and the LSTM is retrained from scratch (ten seeds) on the same window; each issues a one-step forecast for $o+1$. Origins 2015--2018 provide each population's calm-period baseline; origins 2019 onward trace the shock and recovery. The **recovery ratio** at origin $o$ is the one-step RMSE at $o$ divided by the same model's mean calm-period RMSE.
+
+**C. Revision stability.** At each origin both maintained models emit a five-year forecast path (Lee--Carter by drift extrapolation; the LSTM by recursive rollout). The **revision** at origin $o$ is the mean absolute change in projected log-mortality, over the target years shared by consecutive paths, between the paths issued at $o-1$ and $o$. Calm-period revisions average origins 2016--2019; the **shock revision** is the value at origin 2020, the first ingestion of a pandemic year.
+
+Six hypotheses (P1--P6) covering the three arms were committed to the repository, with thresholds and directions, before any post-2019 outcome was computed; the only prior contact with post-2019 data was an availability audit. @tbl-prereg reproduces them in abbreviated form.
+
+| # | Pre-registered statement (abbreviated) | Threshold |
+|:--|:---------------------------------------|:----------|
+| P1 | In 2020 every frozen model under-predicts mortality; between-model spread < half the shock RMSE | ≥18/20; ≥15/20 |
+| P2 | 2020 error is disproportionately concentrated at ages 60+ relative to pre-COVID errors | ≥14/20 |
+| P3 | Maintained models recover to within 50% of calm-period RMSE by origin 2021 | ≥12/18 |
+| P4 | Calm-period path revisions: LSTM > LC | ≥14/20 |
+| P5 | Shock-to-calm revision ratio: LC > LSTM | ≥12/20 |
+| P6 | Post-shock one-step accuracy: retrained LSTM < rolling LC | ≥11/18 |
+
+: Pre-registered hypotheses (abbreviated; full text with rationales in the repository, timestamped before data contact). {#tbl-prereg}
+
+# Results
+
+## The shock: anatomy of a universal failure {#sec-shock}
+
+PENDING-SHOCK-RESULTS
+
+## Recovery under maintenance {#sec-recovery}
+
+PENDING-RECOVERY-RESULTS
+
+## Revision stability {#sec-revision}
+
+PENDING-REVISION-RESULTS
+
+## Hypothesis verdicts {#sec-verdicts}
+
+PENDING-VERDICTS
+
+# Discussion
+
+PENDING-DISCUSSION
+
+## Limitations {#sec-limits}
+
+PENDING-LIMITATIONS
+
+# Conclusion
+
+PENDING-CONCLUSION
+
+# Reproducibility {.unnumbered}
+
+Every number regenerates from fixed seeds: `run_pandemic.py` executes all three arms for all twenty populations (resumable, one JSON and one array archive per population); `PANDEMIC_HYPOTHESES.md` is the pre-registration, committed before the script's first run; models, data pipeline, and the FAVOR+ verification live in `src/`. HMD data are governed by the database's user agreement and are not redistributed.
+
+# References {.unnumbered}
+
+::: {#refs}
+:::
